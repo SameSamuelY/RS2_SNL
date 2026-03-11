@@ -12,14 +12,14 @@ class RealsenseViewNode(Node):
 
         self.bridge = CvBridge()
 
-        self.subscription = self.create_subscription(
-            Image,
-            '/camera/color/image_raw',
-            self.image_callback,
-            10
+       self.subscription = self.create_subscription(
+        Image,
+        '/camera/camera/color/image_raw',
+        self.image_callback,
+        10
         )
 
-        self.get_logger().info('Realsense view node started. Subscribed to /camera/color/image_raw')
+        self.get_logger().info('Realsense view node started. Subscribed to /camera/camera/color/image_raw')
 
     def image_callback(self, msg: Image) -> None:
         try:
