@@ -23,7 +23,8 @@ setup(
         ],
     },
     entry_points={
-        'console_scripts': [
+    'console_scripts': [
+        'realsense_view_node = rs2_snl_pkg.realsense_view_node:main',
         ],
     },
 )
