@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
     'console_scripts': [
-        'realsense_view_node = rs2_snl_pkg.realsense_view_node:main',
-        ],
-    },
+        'shape_colour_detector_node = rs2_snl_pkg.shape_colour_detector_node:main',
+    ],
+},
 )
