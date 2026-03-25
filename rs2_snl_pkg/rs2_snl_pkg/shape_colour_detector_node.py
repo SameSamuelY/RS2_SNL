@@ -71,10 +71,6 @@ class ShapeColourDetectorNode(Node):
         )
 
     def camera_info_callback(self, msg: CameraInfo):
-        # Intrinsic matrix K:
-        # [fx,  0, cx,
-        #   0, fy, cy,
-        #   0,  0,  1]
         self.fx = msg.k[0]
         self.fy = msg.k[4]
         self.cx = msg.k[2]
@@ -159,7 +155,6 @@ class ShapeColourDetectorNode(Node):
         if not (0 <= u < w and 0 <= v < h):
             return None
 
-        # Median over a small window for stability
         half_window = 2
         u_min = max(0, u - half_window)
         u_max = min(w, u + half_window + 1)
@@ -167,8 +162,6 @@ class ShapeColourDetectorNode(Node):
         v_max = min(h, v + half_window + 1)
 
         depth_patch = self.latest_depth_frame[v_min:v_max, u_min:u_max]
-
-        # Remove invalid zero values
         valid_depths = depth_patch[depth_patch > 0]
 
         if valid_depths.size == 0:
