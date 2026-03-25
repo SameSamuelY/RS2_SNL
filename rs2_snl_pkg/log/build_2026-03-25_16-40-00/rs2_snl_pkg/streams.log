@@ -1,0 +1,37 @@
+[0.309s] Invoking command in '/home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg': PYTHONPATH=/home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base build/rs2_snl_pkg build --build-base /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build install --record /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/install.log --single-version-externally-managed install_data
+[0.394s] running egg_info
+[0.394s] creating build/rs2_snl_pkg/rs2_snl_pkg.egg-info
+[0.394s] writing build/rs2_snl_pkg/rs2_snl_pkg.egg-info/PKG-INFO
+[0.395s] writing dependency_links to build/rs2_snl_pkg/rs2_snl_pkg.egg-info/dependency_links.txt
+[0.395s] writing entry points to build/rs2_snl_pkg/rs2_snl_pkg.egg-info/entry_points.txt
+[0.395s] writing requirements to build/rs2_snl_pkg/rs2_snl_pkg.egg-info/requires.txt
+[0.395s] writing top-level names to build/rs2_snl_pkg/rs2_snl_pkg.egg-info/top_level.txt
+[0.395s] writing manifest file 'build/rs2_snl_pkg/rs2_snl_pkg.egg-info/SOURCES.txt'
+[0.396s] reading manifest file 'build/rs2_snl_pkg/rs2_snl_pkg.egg-info/SOURCES.txt'
+[0.397s] writing manifest file 'build/rs2_snl_pkg/rs2_snl_pkg.egg-info/SOURCES.txt'
+[0.397s] running build
+[0.397s] running build_py
+[0.397s] creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build
+[0.397s] creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build/lib
+[0.397s] creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build/lib/rs2_snl_pkg
+[0.397s] copying rs2_snl_pkg/__init__.py -> /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build/lib/rs2_snl_pkg
+[0.397s] copying rs2_snl_pkg/shape_colour_detector_node.py -> /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build/lib/rs2_snl_pkg
+[0.398s] running install
+[0.398s] running install_lib
+[0.398s] creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages/rs2_snl_pkg
+[0.398s] copying /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build/lib/rs2_snl_pkg/__init__.py -> /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages/rs2_snl_pkg
+[0.398s] copying /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build/lib/rs2_snl_pkg/shape_colour_detector_node.py -> /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages/rs2_snl_pkg
+[0.398s] byte-compiling /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages/rs2_snl_pkg/__init__.py to __init__.cpython-310.pyc
+[0.398s] byte-compiling /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages/rs2_snl_pkg/shape_colour_detector_node.py to shape_colour_detector_node.cpython-310.pyc
+[0.400s] running install_data
+[0.400s] creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/share/ament_index
+[0.400s] creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/share/ament_index/resource_index
+[0.400s] creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/share/ament_index/resource_index/packages
+[0.400s] copying resource/rs2_snl_pkg -> /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/share/ament_index/resource_index/packages
+[0.400s] copying package.xml -> /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/share/rs2_snl_pkg
+[0.400s] running install_egg_info
+[0.401s] Copying build/rs2_snl_pkg/rs2_snl_pkg.egg-info to /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages/rs2_snl_pkg-0.0.0-py3.10.egg-info
+[0.401s] running install_scripts
+[0.411s] Installing shape_colour_detector_node script to /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/rs2_snl_pkg
+[0.411s] writing list of installed files to '/home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/install.log'
+[0.423s] Invoked command in '/home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg' returned '0': PYTHONPATH=/home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base build/rs2_snl_pkg build --build-base /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build install --record /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/install.log --single-version-externally-managed install_data

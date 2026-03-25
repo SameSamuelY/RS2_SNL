@@ -1,0 +1,3 @@
+[console_scripts]
+shape_colour_detector_node = rs2_snl_pkg.shape_colour_detector_node:main
+
