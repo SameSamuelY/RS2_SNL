@@ -1,6 +1,10 @@
 import sys
 from datetime import datetime
 
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
     QApplication,
@@ -17,10 +21,22 @@ from PyQt5.QtWidgets import (
 )
 
 
-class RobotGUI(QWidget):
+class GuiControlNode(Node):
     def __init__(self):
-        super().__init__()
+        super().__init__('gui_control_node')
+        self.command_publisher = self.create_publisher(String, '/gui_command', 10)
 
+    def publish_command(self, command_text: str):
+        msg = String()
+        msg.data = command_text
+        self.command_publisher.publish(msg)
+        self.get_logger().info(f'Published command: {command_text}')
+
+
+class RobotGUI(QWidget):
+    def __init__(self, ros_node: GuiControlNode):
+        super().__init__()
+        self.ros_node = ros_node
         self.current_state = "Idle"
         self.init_ui()
 
@@ -50,17 +66,6 @@ class RobotGUI(QWidget):
                 left: 12px;
                 padding: 0 4px 0 4px;
                 color: #1f2d3d;
-            }
-
-            QLabel#TitleLabel {
-                font-size: 24px;
-                font-weight: bold;
-                color: #1f2d3d;
-            }
-
-            QLabel#SubtitleLabel {
-                font-size: 13px;
-                color: #5b6570;
             }
 
             QLabel#StateLabel {
@@ -144,30 +149,10 @@ class RobotGUI(QWidget):
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
 
-        header_layout = self.build_header()
         content_layout = self.build_content()
-
-        main_layout.addLayout(header_layout)
         main_layout.addLayout(content_layout)
 
         self.setLayout(main_layout)
-
-    def build_header(self):
-        header_layout = QVBoxLayout()
-        header_layout.setSpacing(4)
-
-        title_label = QLabel("Robot Control Panel")
-        title_label.setObjectName("TitleLabel")
-        title_label.setAlignment(Qt.AlignCenter)
-
-        subtitle_label = QLabel("Pick and Place System")
-        subtitle_label.setObjectName("SubtitleLabel")
-        subtitle_label.setAlignment(Qt.AlignCenter)
-
-        header_layout.addWidget(title_label)
-        header_layout.addWidget(subtitle_label)
-
-        return header_layout
 
     def build_content(self):
         content_layout = QHBoxLayout()
@@ -295,7 +280,7 @@ class RobotGUI(QWidget):
         self.mode_label = QLabel("Mode: Manual GUI Control")
         self.mode_label.setObjectName("InfoLabel")
 
-        self.connection_label = QLabel("Integration Status: Not Connected to ROS Yet")
+        self.connection_label = QLabel("ROS2 Connection: Publisher Ready")
         self.connection_label.setObjectName("InfoLabel")
 
         self.last_command_label = QLabel("Last Command: None")
@@ -358,32 +343,52 @@ class RobotGUI(QWidget):
         self.update_state_display("Executing", "System is currently running the task.")
         self.last_command_label.setText("Last Command: Start")
         self.append_log("Start button pressed.")
-        self.append_log("Execution command triggered.")
-
+        self.append_log("Published ROS2 command: start")
+        self.ros_node.publish_command("start")
         QTimer.singleShot(3000, self.complete_task_demo)
 
     def stop_system(self):
         self.update_state_display("Stopped", "System execution has been stopped by the user.")
         self.last_command_label.setText("Last Command: Stop")
         self.append_log("Stop button pressed.")
-        self.append_log("Execution halted safely.")
+        self.append_log("Published ROS2 command: stop")
+        self.ros_node.publish_command("stop")
 
     def reset_system(self):
         self.update_state_display("Idle", "System is waiting for user input.")
         self.last_command_label.setText("Last Command: Reset")
         self.append_log("Reset button pressed.")
-        self.append_log("System returned to Idle state.")
+        self.append_log("Published ROS2 command: reset")
+        self.ros_node.publish_command("reset")
 
     def complete_task_demo(self):
         if self.current_state == "Executing":
-            self.update_state_display("Completed", "Task completed successfully.")
+            self.update_state_display("Completed", "Demo task completed successfully.")
             self.last_command_label.setText("Last Command: Auto-complete demo")
             self.append_log("Demo task completed successfully.")
 
 
-if __name__ == "__main__":
+def main(args=None):
+    rclpy.init(args=args)
+
+    ros_node = GuiControlNode()
+
     app = QApplication(sys.argv)
-    app.setStyle("Fusion") 
-    window = RobotGUI()
+    app.setStyle("Fusion")
+
+    window = RobotGUI(ros_node)
     window.show()
-    sys.exit(app.exec_())
+
+    ros_timer = QTimer()
+    ros_timer.timeout.connect(lambda: rclpy.spin_once(ros_node, timeout_sec=0.0))
+    ros_timer.start(50)
+
+    exit_code = app.exec_()
+
+    ros_node.destroy_node()
+    rclpy.shutdown()
+    sys.exit(exit_code)
+
+
+if __name__ == '__main__':
+    main()

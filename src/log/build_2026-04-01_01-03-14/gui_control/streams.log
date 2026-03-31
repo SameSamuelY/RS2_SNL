@@ -1,0 +1,36 @@
+[0.952s] Invoking command in '/home/boinggboi/ros2_ws/src/gui_control': PYTHONPATH=/home/boinggboi/ros2_ws/src/build/gui_control/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/boinggboi/ros2_ws/src/install/gui_control/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../build/gui_control build --build-base /home/boinggboi/ros2_ws/src/build/gui_control/build install --record /home/boinggboi/ros2_ws/src/build/gui_control/install.log --single-version-externally-managed install_data
+[1.201s] running egg_info
+[1.201s] creating ../build/gui_control/gui_control.egg-info
+[1.202s] writing ../build/gui_control/gui_control.egg-info/PKG-INFO
+[1.203s] writing dependency_links to ../build/gui_control/gui_control.egg-info/dependency_links.txt
+[1.203s] writing entry points to ../build/gui_control/gui_control.egg-info/entry_points.txt
+[1.203s] writing requirements to ../build/gui_control/gui_control.egg-info/requires.txt
+[1.204s] writing top-level names to ../build/gui_control/gui_control.egg-info/top_level.txt
+[1.204s] writing manifest file '../build/gui_control/gui_control.egg-info/SOURCES.txt'
+[1.207s] reading manifest file '../build/gui_control/gui_control.egg-info/SOURCES.txt'
+[1.207s] writing manifest file '../build/gui_control/gui_control.egg-info/SOURCES.txt'
+[1.208s] running build
+[1.208s] running build_py
+[1.208s] creating /home/boinggboi/ros2_ws/src/build/gui_control/build
+[1.209s] creating /home/boinggboi/ros2_ws/src/build/gui_control/build/lib
+[1.209s] creating /home/boinggboi/ros2_ws/src/build/gui_control/build/lib/gui_control
+[1.210s] copying gui_control/__init__.py -> /home/boinggboi/ros2_ws/src/build/gui_control/build/lib/gui_control
+[1.210s] copying gui_control/gui_node.py -> /home/boinggboi/ros2_ws/src/build/gui_control/build/lib/gui_control
+[1.211s] running install
+[1.211s] running install_lib
+[1.214s] creating /home/boinggboi/ros2_ws/src/install/gui_control/lib/python3.10/site-packages/gui_control
+[1.215s] copying /home/boinggboi/ros2_ws/src/build/gui_control/build/lib/gui_control/__init__.py -> /home/boinggboi/ros2_ws/src/install/gui_control/lib/python3.10/site-packages/gui_control
+[1.215s] copying /home/boinggboi/ros2_ws/src/build/gui_control/build/lib/gui_control/gui_node.py -> /home/boinggboi/ros2_ws/src/install/gui_control/lib/python3.10/site-packages/gui_control
+[1.215s] byte-compiling /home/boinggboi/ros2_ws/src/install/gui_control/lib/python3.10/site-packages/gui_control/__init__.py to __init__.cpython-310.pyc
+[1.216s] byte-compiling /home/boinggboi/ros2_ws/src/install/gui_control/lib/python3.10/site-packages/gui_control/gui_node.py to gui_node.cpython-310.pyc
+[1.217s] running install_data
+[1.217s] creating /home/boinggboi/ros2_ws/src/install/gui_control/share/ament_index
+[1.217s] creating /home/boinggboi/ros2_ws/src/install/gui_control/share/ament_index/resource_index
+[1.218s] creating /home/boinggboi/ros2_ws/src/install/gui_control/share/ament_index/resource_index/packages
+[1.219s] copying resource/gui_control -> /home/boinggboi/ros2_ws/src/install/gui_control/share/ament_index/resource_index/packages
+[1.219s] copying package.xml -> /home/boinggboi/ros2_ws/src/install/gui_control/share/gui_control
+[1.219s] running install_egg_info
+[1.221s] Copying ../build/gui_control/gui_control.egg-info to /home/boinggboi/ros2_ws/src/install/gui_control/lib/python3.10/site-packages/gui_control-0.0.0-py3.10.egg-info
+[1.224s] running install_scripts
+[1.244s] writing list of installed files to '/home/boinggboi/ros2_ws/src/build/gui_control/install.log'
+[1.274s] Invoked command in '/home/boinggboi/ros2_ws/src/gui_control' returned '0': PYTHONPATH=/home/boinggboi/ros2_ws/src/build/gui_control/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/boinggboi/ros2_ws/src/install/gui_control/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../build/gui_control build --build-base /home/boinggboi/ros2_ws/src/build/gui_control/build install --record /home/boinggboi/ros2_ws/src/build/gui_control/install.log --single-version-externally-managed install_data
