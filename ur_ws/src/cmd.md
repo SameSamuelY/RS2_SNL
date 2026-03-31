@@ -1,20 +1,21 @@
+cd ~/git/RS2_SNL/ur_ws/
 # colcon build (all)
-cd ~/ur_ws
+cd ~/git/RS2_SNL/ur_ws/
 colcon build --symlink-install
 source install/setup.bash
 
 # colcon build (ur3 urdf)
-cd ~/ur_ws
+cd ~/git/RS2_SNL/ur_ws/
 colcon build --packages-select ur_description --symlink-install
 source install/setup.bash
 
 # colcon build (ur3_planner)
-cd ~/ur_ws
+cd ~/git/RS2_SNL/ur_ws/
 colcon build --packages-select ur3_planner --symlink-install
 source install/setup.bash
 
 # Source
-source ~/ur_ws/install/setup.bash
+source ~/git/RS2_SNL/ur_ws/install/setup.bash
 
 # Docker 
 http://localhost:6080/vnc.html
@@ -32,7 +33,7 @@ ros2 launch ur_robot_driver ur_control.launch.py ur_type:=ur3 robot_ip:=192.168.
 # Terminal 2 Driver (Simulation without Gripper)
 ros2 launch ur_robot_driver ur_control.launch.py \
     robot_ip:=192.168.56.101 \
-    calibration_file:=/home/samuel/ur_ws/src/ur3_planner/src/ur3_calibration.yaml \
+    calibration_file:=~/git/RS2_SNL/ur_ws/src/ur3_planner/src/ur3_calibration.yaml \
     ur_type:=ur3 \
     launch_rviz:=false \
     trajectory_velocity_scaling:=0.3 \
@@ -40,7 +41,7 @@ ros2 launch ur_robot_driver ur_control.launch.py \
 # Terminal 2 Driver (Gripper)
 ros2 launch ur_robot_driver ur_control.launch.py \
     robot_ip:=192.168.56.101 \
-    calibration_file:=/home/samuel/ur_ws/src/ur3_planner/src/ur3_calibration.yaml \
+    calibration_file:=~/git/RS2_SNL/ur_ws/src/ur3_planner/src/ur3_calibration.yaml \
     ur_type:=ur3 \
     launch_rviz:=false \
     trajectory_velocity_scaling:=0.1 \
@@ -62,8 +63,7 @@ ros2 launch ur_moveit_config ur_moveit.launch.py ur_type:=ur3 launch_rviz:=true
 # Terminal 4 Listener RRTConnectkConfigDefault
 ros2 run ur3_planner ur3_planner_listener \
     --ros-args -p planning_group:=ur_manipulator \
-    -p execute_immediately:=true \
-    -p planner_id:=RRTConnectkConfigDefault
+    -p execute_immediately:=true
 # Terminal 4 Listener RRTstarkConfigDefault
 ros2 run ur3_planner ur3_planner_listener \
     --ros-args -p planning_group:=ur_manipulator \
