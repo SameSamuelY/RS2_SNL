@@ -1,0 +1,15 @@
+# Ignore build and install directories
+build/
+install/
+log/
+
+# Ignore IDE files
+.vscode/
+.idea/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore any local config files (optional)
+*.local.yaml
