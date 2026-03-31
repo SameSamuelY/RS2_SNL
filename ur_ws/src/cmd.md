@@ -62,7 +62,8 @@ ros2 launch ur_moveit_config ur_moveit.launch.py ur_type:=ur3 launch_rviz:=true
 # Terminal 4 Listener RRTConnectkConfigDefault
 ros2 run ur3_planner ur3_planner_listener \
     --ros-args -p planning_group:=ur_manipulator \
-    -p execute_immediately:=true
+    -p execute_immediately:=true \
+    -p planner_id:=RRTConnectkConfigDefault
 # Terminal 4 Listener RRTstarkConfigDefault
 ros2 run ur3_planner ur3_planner_listener \
     --ros-args -p planning_group:=ur_manipulator \
