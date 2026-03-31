@@ -1,0 +1,16 @@
+package.xml
+setup.cfg
+setup.py
+build/rs2_snl_pkg/rs2_snl_pkg.egg-info/PKG-INFO
+build/rs2_snl_pkg/rs2_snl_pkg.egg-info/SOURCES.txt
+build/rs2_snl_pkg/rs2_snl_pkg.egg-info/dependency_links.txt
+build/rs2_snl_pkg/rs2_snl_pkg.egg-info/entry_points.txt
+build/rs2_snl_pkg/rs2_snl_pkg.egg-info/requires.txt
+build/rs2_snl_pkg/rs2_snl_pkg.egg-info/top_level.txt
+build/rs2_snl_pkg/rs2_snl_pkg.egg-info/zip-safe
+resource/rs2_snl_pkg
+rs2_snl_pkg/__init__.py
+rs2_snl_pkg/shape_colour_detector_node.py
+test/test_copyright.py
+test/test_flake8.py
+test/test_pep257.py

@@ -1,0 +1,35 @@
+running egg_info
+creating build/rs2_snl_pkg/rs2_snl_pkg.egg-info
+writing build/rs2_snl_pkg/rs2_snl_pkg.egg-info/PKG-INFO
+writing dependency_links to build/rs2_snl_pkg/rs2_snl_pkg.egg-info/dependency_links.txt
+writing entry points to build/rs2_snl_pkg/rs2_snl_pkg.egg-info/entry_points.txt
+writing requirements to build/rs2_snl_pkg/rs2_snl_pkg.egg-info/requires.txt
+writing top-level names to build/rs2_snl_pkg/rs2_snl_pkg.egg-info/top_level.txt
+writing manifest file 'build/rs2_snl_pkg/rs2_snl_pkg.egg-info/SOURCES.txt'
+reading manifest file 'build/rs2_snl_pkg/rs2_snl_pkg.egg-info/SOURCES.txt'
+writing manifest file 'build/rs2_snl_pkg/rs2_snl_pkg.egg-info/SOURCES.txt'
+running build
+running build_py
+creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build
+creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build/lib
+creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build/lib/rs2_snl_pkg
+copying rs2_snl_pkg/__init__.py -> /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build/lib/rs2_snl_pkg
+copying rs2_snl_pkg/shape_colour_detector_node.py -> /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build/lib/rs2_snl_pkg
+running install
+running install_lib
+creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages/rs2_snl_pkg
+copying /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build/lib/rs2_snl_pkg/__init__.py -> /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages/rs2_snl_pkg
+copying /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/build/lib/rs2_snl_pkg/shape_colour_detector_node.py -> /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages/rs2_snl_pkg
+byte-compiling /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages/rs2_snl_pkg/__init__.py to __init__.cpython-310.pyc
+byte-compiling /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages/rs2_snl_pkg/shape_colour_detector_node.py to shape_colour_detector_node.cpython-310.pyc
+running install_data
+creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/share/ament_index
+creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/share/ament_index/resource_index
+creating /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/share/ament_index/resource_index/packages
+copying resource/rs2_snl_pkg -> /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/share/ament_index/resource_index/packages
+copying package.xml -> /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/share/rs2_snl_pkg
+running install_egg_info
+Copying build/rs2_snl_pkg/rs2_snl_pkg.egg-info to /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/python3.10/site-packages/rs2_snl_pkg-0.0.0-py3.10.egg-info
+running install_scripts
+Installing shape_colour_detector_node script to /home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/install/rs2_snl_pkg/lib/rs2_snl_pkg
+writing list of installed files to '/home/lachlanselleck/ros2_ws/src/RS2_SNL/rs2_snl_pkg/build/rs2_snl_pkg/install.log'
