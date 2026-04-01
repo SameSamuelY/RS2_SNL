@@ -71,7 +71,7 @@ data: stop
 data: reset
 
 ###Notes
-Always run commands from ~/ros2_ws
+Always run commands from ~/projects/RS2_SNL
 Always source ROS2 and the workspace before running
 Rebuild only when you modify code
 Make sure PyQt5 is installed:
