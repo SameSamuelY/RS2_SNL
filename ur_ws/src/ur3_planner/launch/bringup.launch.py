@@ -72,36 +72,35 @@ def generate_launch_description():
         output='screen'
     )
 
-    # # 4. Gripper driver
-    # gripper_driver = IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource([
-    #         PathJoinSubstitution([
-    #             FindPackageShare('onrobot_driver'),
-    #             'launch',
-    #             'onrobot_control.launch.py'
-    #         ])
-    #     ]),
-    #     launch_arguments={
-    #         'onrobot_type': 'rg2',
-    #         'connection_type': gripper_connection_type,
-    #         'use_fake_hardware': use_fake_gripper,
-    #         'ip_address': '192.168.1.100',   # ignored when fake
-    #     }.items()
-    # )
+    # 4. Gripper driver
+    gripper_driver = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            PathJoinSubstitution([
+                FindPackageShare('onrobot_driver'),
+                'launch',
+                'onrobot_control.launch.py'
+            ])
+        ]),
+        launch_arguments={
+            'onrobot_type': 'rg2',
+            'connection_type': gripper_connection_type,
+            'use_fake_hardware': use_fake_gripper,
+            'ip_address': '192.168.1.100',   # ignored when fake
+        }.items()
+    )
 
-    # # 5. Goal Pose Publisher GUI
-    # gui = ExecuteProcess(
-    #     cmd=['python3', PathJoinSubstitution([
-    #         FindPackageShare('ur3_planner'), 'src', 'ur3_goal_gui.py'
-    #     ])],
-    #     output='screen'
-    # )
+    # 5. Goal Pose Publisher GUI
+    gui = ExecuteProcess(
+        cmd=['python3', PathJoinSubstitution([
+            FindPackageShare('ur3_planner'), 'src', 'ur3_goal_gui.py'
+        ])],
+        output='screen'
+    )
 
     return LaunchDescription([
         ur_driver,
         moveit,
         listener_node,
         # gripper_driver,
-        # gui,
     ])
 

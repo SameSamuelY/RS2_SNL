@@ -23,20 +23,26 @@ http://localhost:6080/vnc.html
 # Initialise docker (if not)
 sudo service docker start
 
+# Activate controller
+ros2 control list_controllers
+ros2 control switch_controllers --activate scaled_joint_trajectory_controller
+
 # Terminal 1 Docker
 ros2 run ur_client_library start_ursim.sh \
   -m ur3 \
   -f "-p 5900:5900 -p 6080:6080 -p 30001-30004:30001-30004 -p 29999:29999"
 
-# Terminal 2-6 bringup.launch
+# Terminal 2-4 bringup.launch
+ros2 launch ur3_planner bringup.launch.py \
+    robot_ip:=192.168.56.101 \
+    planner_id:=RRTConnectkConfigDefault \
+    ignore_if_busy:=false
+
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \
     planner_id:=RRTstarkConfigDefault \
     ignore_if_busy:=false
-
-# Activate controller
-ros2 control list_controllers
-ros2 control switch_controllers --activate scaled_joint_trajectory_controller
+# GUI & gripper driver
 
 # Terminal 2 Driver (Real Connection)
 ros2 launch ur_robot_driver ur_control.launch.py ur_type:=ur3 robot_ip:=192.168.0.195 launch_rviz:=false
