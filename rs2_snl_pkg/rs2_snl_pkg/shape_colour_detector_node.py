@@ -1,5 +1,4 @@
 import json
-
 import cv2
 import numpy as np
 import rclpy
@@ -32,6 +31,10 @@ class ShapeColourDetectorNode(Node):
         # TF buffer + listener
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+
+        # Frame names
+        self.camera_frame = 'camera_color_optical_frame'
+        self.tag_frame = 'tag_0'
 
         # RGB subscription
         self.rgb_subscription = self.create_subscription(
@@ -66,8 +69,8 @@ class ShapeColourDetectorNode(Node):
 
         self.get_logger().info(
             'Shape colour detector node started. '
-            'Subscribed to RGB, aligned depth, and camera info topics. '
-            'Publishing to /detection_result'
+            'Publishing valid RGB objects only (red/green/blue + square/rectangle/circle/triangle). '
+            'Transforming object points into tag_0 when available.'
         )
 
     def camera_info_callback(self, msg: CameraInfo):
@@ -110,19 +113,29 @@ class ShapeColourDetectorNode(Node):
         return 'Irregular Shape'
 
     def detect_colour(self, hsv_frame, contour):
-        mask = np.zeros(hsv_frame.shape[:2], dtype='uint8')
-        cv2.drawContours(mask, [contour], -1, 255, -1)
+        """
+        Returns Red, Green, Blue, or Unknown.
+        Unknown is returned if the contour region does not contain enough
+        red/green/blue pixels to be considered a valid coloured object.
+        This helps reject AprilTags and other black/white background objects.
+        """
+        contour_mask = np.zeros(hsv_frame.shape[:2], dtype='uint8')
+        cv2.drawContours(contour_mask, [contour], -1, 255, -1)
+
+        contour_pixels = cv2.countNonZero(contour_mask)
+        if contour_pixels == 0:
+            return 'Unknown'
 
         # Red wraps in HSV
-        lower_red1 = np.array([0, 100, 100])
+        lower_red1 = np.array([0, 100, 80])
         upper_red1 = np.array([10, 255, 255])
-        lower_red2 = np.array([160, 100, 100])
+        lower_red2 = np.array([160, 100, 80])
         upper_red2 = np.array([179, 255, 255])
 
-        lower_green = np.array([40, 50, 50])
+        lower_green = np.array([40, 60, 60])
         upper_green = np.array([85, 255, 255])
 
-        lower_blue = np.array([90, 50, 50])
+        lower_blue = np.array([90, 60, 60])
         upper_blue = np.array([140, 255, 255])
 
         red_mask1 = cv2.inRange(hsv_frame, lower_red1, upper_red1)
@@ -132,19 +145,27 @@ class ShapeColourDetectorNode(Node):
         green_mask = cv2.inRange(hsv_frame, lower_green, upper_green)
         blue_mask = cv2.inRange(hsv_frame, lower_blue, upper_blue)
 
-        red_pixels = cv2.countNonZero(cv2.bitwise_and(red_mask, red_mask, mask=mask))
-        green_pixels = cv2.countNonZero(cv2.bitwise_and(green_mask, green_mask, mask=mask))
-        blue_pixels = cv2.countNonZero(cv2.bitwise_and(blue_mask, blue_mask, mask=mask))
+        red_pixels = cv2.countNonZero(cv2.bitwise_and(red_mask, red_mask, mask=contour_mask))
+        green_pixels = cv2.countNonZero(cv2.bitwise_and(green_mask, green_mask, mask=contour_mask))
+        blue_pixels = cv2.countNonZero(cv2.bitwise_and(blue_mask, blue_mask, mask=contour_mask))
 
-        max_pixels = max(red_pixels, green_pixels, blue_pixels)
+        colour_counts = {
+            'Red': red_pixels,
+            'Green': green_pixels,
+            'Blue': blue_pixels
+        }
 
-        if max_pixels == 0:
+        best_colour = max(colour_counts, key=colour_counts.get)
+        best_count = colour_counts[best_colour]
+
+        # Require enough of the contour to actually be one of the target colours
+        coverage_ratio = best_count / float(contour_pixels)
+
+        # Tune this if needed; higher rejects more false positives
+        if coverage_ratio < 0.20:
             return 'Unknown'
-        if max_pixels == red_pixels:
-            return 'Red'
-        if max_pixels == green_pixels:
-            return 'Green'
-        return 'Blue'
+
+        return best_colour
 
     def get_depth_at_pixel(self, u, v):
         if self.latest_depth_frame is None:
@@ -183,32 +204,35 @@ class ShapeColourDetectorNode(Node):
 
         return x, y, z
 
-    def transform_to_base_link(self, x, y, z, source_frame='camera_color_optical_frame'):
-        point_camera = PointStamped()
-        point_camera.header.stamp = self.get_clock().now().to_msg()
-        point_camera.header.frame_id = source_frame
-        point_camera.point.x = float(x)
-        point_camera.point.y = float(y)
-        point_camera.point.z = float(z)
+    def transform_to_frame(self, x, y, z, target_frame, source_frame=None):
+        if source_frame is None:
+            source_frame = self.camera_frame
+
+        point_in = PointStamped()
+        point_in.header.stamp = self.get_clock().now().to_msg()
+        point_in.header.frame_id = source_frame
+        point_in.point.x = float(x)
+        point_in.point.y = float(y)
+        point_in.point.z = float(z)
 
         try:
             transform = self.tf_buffer.lookup_transform(
-                'base_link',
+                target_frame,
                 source_frame,
                 rclpy.time.Time()
             )
 
-            point_base = do_transform_point(point_camera, transform)
+            point_out = do_transform_point(point_in, transform)
 
             return (
-                point_base.point.x,
-                point_base.point.y,
-                point_base.point.z
+                point_out.point.x,
+                point_out.point.y,
+                point_out.point.z
             )
 
         except TransformException as ex:
             self.get_logger().warn(
-                f'Could not transform from {source_frame} to base_link: {ex}'
+                f'Could not transform from {source_frame} to {target_frame}: {ex}'
             )
             return None
 
@@ -220,6 +244,7 @@ class ShapeColourDetectorNode(Node):
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
+        # Keep your current threshold-based contour pipeline
         _, thresh = cv2.threshold(blurred, 100, 255, cv2.THRESH_BINARY_INV)
 
         contours, _ = cv2.findContours(
@@ -247,18 +272,27 @@ class ShapeColourDetectorNode(Node):
             shape = self.detect_shape(contour)
             colour = self.detect_colour(hsv, contour)
 
+            # Reject anything not one of the desired coloured geometric objects
+            if colour not in ['Red', 'Green', 'Blue']:
+                continue
+
+            if shape not in ['Circle', 'Square', 'Rectangle', 'Triangle']:
+                continue
+
             depth_m = self.get_depth_at_pixel(cX, cY)
             camera_xyz = None
-            base_xyz = None
+            tag_xyz = None
 
             if depth_m is not None:
                 camera_xyz = self.pixel_to_camera_coordinates(cX, cY, depth_m)
 
             if camera_xyz is not None:
-                base_xyz = self.transform_to_base_link(
+                tag_xyz = self.transform_to_frame(
                     camera_xyz[0],
                     camera_xyz[1],
-                    camera_xyz[2]
+                    camera_xyz[2],
+                    self.tag_frame,
+                    self.camera_frame
                 )
 
             detection = {
@@ -274,19 +308,18 @@ class ShapeColourDetectorNode(Node):
                 detection['camera_y_m'] = camera_xyz[1]
                 detection['camera_z_m'] = camera_xyz[2]
 
-            if base_xyz is not None:
-                detection['base_x_m'] = base_xyz[0]
-                detection['base_y_m'] = base_xyz[1]
-                detection['base_z_m'] = base_xyz[2]
+            if tag_xyz is not None:
+                detection['tag_x_m'] = tag_xyz[0]
+                detection['tag_y_m'] = tag_xyz[1]
+                detection['tag_z_m'] = tag_xyz[2]
 
             detection_list.append(detection)
             valid_count += 1
 
-            # Draw contour + centroid
+            # Draw only valid objects
             cv2.drawContours(display_frame, [contour], -1, (0, 255, 0), 2)
             cv2.circle(display_frame, (cX, cY), 5, (0, 0, 255), -1)
 
-            # Labels
             label = f'{colour} {shape}'
             cv2.putText(
                 display_frame,
@@ -325,15 +358,15 @@ class ShapeColourDetectorNode(Node):
                     2
                 )
 
-            if base_xyz is not None:
-                base_text = (
-                    f'B: {base_xyz[0]:.3f}, '
-                    f'{base_xyz[1]:.3f}, '
-                    f'{base_xyz[2]:.3f}'
+            if tag_xyz is not None:
+                tag_text = (
+                    f'T: {tag_xyz[0]:.3f}, '
+                    f'{tag_xyz[1]:.3f}, '
+                    f'{tag_xyz[2]:.3f}'
                 )
                 cv2.putText(
                     display_frame,
-                    base_text,
+                    tag_text,
                     (cX - 100, cY + 55),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.4,
@@ -343,7 +376,7 @@ class ShapeColourDetectorNode(Node):
 
         cv2.putText(
             display_frame,
-            f'Contours: {valid_count}',
+            f'Valid Objects: {valid_count}',
             (20, 40),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
@@ -351,15 +384,14 @@ class ShapeColourDetectorNode(Node):
             2
         )
 
-        # Publish JSON string
+        # Publish JSON string containing only valid objects
         msg_out = String()
         msg_out.data = json.dumps(detection_list)
         self.publisher_.publish(msg_out)
 
-        # Display
         cv2.imshow('RGB Feed', frame)
         cv2.imshow('Threshold', thresh)
-        cv2.imshow('Detected Shapes, Colours and Coordinates', display_frame)
+        cv2.imshow('Detected Valid Objects and Coordinates', display_frame)
         cv2.waitKey(1)
 
 
