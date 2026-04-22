@@ -59,6 +59,12 @@ install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}/
 )
 
+# Install Python GUI script
+install(PROGRAMS
+    src/ur3_goal_gui.py
+    DESTINATION share/${PROJECT_NAME}/src
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)

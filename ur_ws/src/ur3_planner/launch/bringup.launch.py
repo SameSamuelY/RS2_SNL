@@ -21,6 +21,7 @@ def generate_launch_description():
     headless_mode = LaunchConfiguration('headless_mode', default='false')
     ignore_if_busy = LaunchConfiguration('ignore_if_busy', default='false')
     initial_joint_controller = LaunchConfiguration("initial_joint_controller", default="scaled_joint_trajectory_controller")
+    ip_address = LaunchConfiguration('ip_address', default='192.168.1.1')
 
     # 1. UR Driver
     ur_driver = IncludeLaunchDescription(
@@ -39,7 +40,7 @@ def generate_launch_description():
             'launch_rviz': 'false', # Default: false
             'trajectory_velocity_scaling': trajectory_velocity_scaling,
             'trajectory_acceleration_scaling': trajectory_acceleration_scaling,
-            'use_fake_gripper': use_fake_gripper,
+            'use_fake_gripper': 'true', # Force fake gripper for now to avoid issues with real gripper connection
             'gripper_connection_type': gripper_connection_type,
             'headless_mode': headless_mode,
         }.items()
@@ -74,13 +75,28 @@ def generate_launch_description():
         output='screen'
     )
 
-    # Activate controller
+    # 4. Activate controller
     activate_controller = ExecuteProcess(
         cmd=['ros2', 'control', 'switch_controllers', '--activate', 'scaled_joint_trajectory_controller'],
         output='screen'
     )
 
-    # 4. Gripper driver
+    # 5. Goal Pose Publisher GUI
+    gui = ExecuteProcess(
+        cmd=['python3', PathJoinSubstitution([
+            FindPackageShare('ur3_planner'), 'src', 'ur3_goal_gui.py'
+        ])],
+        output='screen'
+    )
+
+    spawn_gripper_controller = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['finger_width_controller'],
+        output='screen'
+    )
+
+    # 6. Gripper driver
     gripper_driver = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             PathJoinSubstitution([
@@ -92,23 +108,28 @@ def generate_launch_description():
         launch_arguments={
             'onrobot_type': 'rg2',
             'connection_type': gripper_connection_type,
-            'use_fake_hardware': use_fake_gripper,
-            'ip_address': '192.168.1.100',   # ignored when fake
+            'use_fake_hardware': 'true',   # force fake hardware for gripper
+            'ip_address': ip_address,
+            'launch_rviz': 'false',
         }.items()
     )
 
-    # 5. Goal Pose Publisher GUI
-    gui = ExecuteProcess(
-        cmd=['python3', PathJoinSubstitution([
-            FindPackageShare('ur3_planner'), 'src', 'ur3_goal_gui.py'
-        ])],
+    # 7. Joint state bridge (to bridge /onrobot/joint_states to /joint_states for MoveIt)
+    joint_state_bridge = Node(
+        package='topic_tools',
+        executable='relay',
+        arguments=['/onrobot/joint_states', '/joint_states'],
         output='screen'
     )
-
+    
     return LaunchDescription([
         ur_driver,
+        spawn_gripper_controller,
         moveit,
         listener_node,
+        activate_controller,
+        gui,
         # gripper_driver,
+        # joint_state_bridge
     ])
 

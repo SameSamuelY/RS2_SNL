@@ -1,6 +1,6 @@
-shoulder_pan: 0.0
-shoulder_lift: 0.0
-elbow: 0.0
-wrist_1: 0.0
-wrist_2: 0.0
-wrist_3: 0.0
+shoulder_pan_joint: 0.0
+shoulder_lift_joint: 0.0
+elbow_joint: 0.0
+wrist_1_joint: 0.0
+wrist_2_joint: 0.0
+wrist_3_joint: 0.0

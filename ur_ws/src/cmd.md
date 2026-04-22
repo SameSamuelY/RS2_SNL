@@ -36,9 +36,10 @@ ros2 run ur_client_library start_ursim.sh \
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \
     planner_id:=RRTConnectkConfigDefault \
-    ignore_if_busy:=false \
-    trajectory_velocity_scaling:=0.05 \
-    trajectory_acceleration_scaling:=0.05
+    ignore_if_busy:=true \
+    trajectory_velocity_scaling:=0.1 \
+    trajectory_acceleration_scaling:=0.1 \
+    connection_type:=serial
 
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \
@@ -94,12 +95,14 @@ cd ~/git/RS2_SNL/ur_ws/
 chmod +x src/ur3_planner/src/ur3_goal_gui.py
 python3 src/ur3_planner/src/ur3_goal_gui.py
 
-# Terminal 6 Gripper
+# Terminal 6 Gripper (Control Box)
 ros2 launch onrobot_driver onrobot_control.launch.py \
     onrobot_type:=rg2 \
     connection_type:=tcp \
-    ip_address:=192.168.1.100 \
-    use_fake_hardware:=true
+    use_fake_hardware:=true \
+    ip_address:=192.168.1.1
+
+
 
 
 # State tolerances failed for joint 5
@@ -153,6 +156,9 @@ sudo apt update
 sudo apt install ros-humble-moveit
 sudo apt install ros-humble-moveit-visual-tools
 sudo apt install libnet1-dev
+
+# Installs
+sudo apt install ros-humble-topic-tools
 
 # ping
 ping 192.168.56.101
