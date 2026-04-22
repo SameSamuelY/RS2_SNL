@@ -69,7 +69,7 @@ class ShapeColourDetectorNode(Node):
 
         self.get_logger().info(
             'Shape colour detector node started. '
-            'Publishing valid RGB objects only (red/green/blue + square/rectangle/circle/triangle). '
+            'Publishing valid RGB objects only (red/green/blue + circle/square/rectangle/triangle). '
             'Transforming object points into tag_0 when available.'
         )
 
@@ -89,6 +89,10 @@ class ShapeColourDetectorNode(Node):
             self.get_logger().error(f'Depth conversion failed: {e}')
 
     def detect_shape(self, contour):
+        """
+        Returns one of:
+        Triangle, Square, Rectangle, Circle, Irregular Shape
+        """
         peri = cv2.arcLength(contour, True)
         approx = cv2.approxPolyDP(contour, 0.04 * peri, True)
         vertices = len(approx)
@@ -115,9 +119,10 @@ class ShapeColourDetectorNode(Node):
     def detect_colour(self, hsv_frame, contour):
         """
         Returns Red, Green, Blue, or Unknown.
+
         Unknown is returned if the contour region does not contain enough
         red/green/blue pixels to be considered a valid coloured object.
-        This helps reject AprilTags and other black/white background objects.
+        This helps reject black/white AprilTags and other background items.
         """
         contour_mask = np.zeros(hsv_frame.shape[:2], dtype='uint8')
         cv2.drawContours(contour_mask, [contour], -1, 255, -1)
@@ -158,10 +163,10 @@ class ShapeColourDetectorNode(Node):
         best_colour = max(colour_counts, key=colour_counts.get)
         best_count = colour_counts[best_colour]
 
-        # Require enough of the contour to actually be one of the target colours
+        # Require a minimum amount of the contour area to belong to one of the target colours
         coverage_ratio = best_count / float(contour_pixels)
 
-        # Tune this if needed; higher rejects more false positives
+        # Tune this if needed
         if coverage_ratio < 0.20:
             return 'Unknown'
 
@@ -176,6 +181,7 @@ class ShapeColourDetectorNode(Node):
         if not (0 <= u < w and 0 <= v < h):
             return None
 
+        # Small window around centroid for stability
         half_window = 2
         u_min = max(0, u - half_window)
         u_max = min(w, u + half_window + 1)
@@ -244,7 +250,7 @@ class ShapeColourDetectorNode(Node):
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-        # Keep your current threshold-based contour pipeline
+        # Current contour extraction approach
         _, thresh = cv2.threshold(blurred, 100, 255, cv2.THRESH_BINARY_INV)
 
         contours, _ = cv2.findContours(
@@ -272,7 +278,7 @@ class ShapeColourDetectorNode(Node):
             shape = self.detect_shape(contour)
             colour = self.detect_colour(hsv, contour)
 
-            # Reject anything not one of the desired coloured geometric objects
+            # Reject anything not matching required shapes/colours
             if colour not in ['Red', 'Green', 'Blue']:
                 continue
 
@@ -384,7 +390,7 @@ class ShapeColourDetectorNode(Node):
             2
         )
 
-        # Publish JSON string containing only valid objects
+        # Publish only valid objects
         msg_out = String()
         msg_out.data = json.dumps(detection_list)
         self.publisher_.publish(msg_out)
