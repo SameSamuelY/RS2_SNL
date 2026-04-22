@@ -20,6 +20,7 @@ def generate_launch_description():
     gripper_connection_type = LaunchConfiguration('gripper_connection_type', default='tcp')
     headless_mode = LaunchConfiguration('headless_mode', default='false')
     ignore_if_busy = LaunchConfiguration('ignore_if_busy', default='false')
+    initial_joint_controller = LaunchConfiguration("initial_joint_controller", default="scaled_joint_trajectory_controller")
 
     # 1. UR Driver
     ur_driver = IncludeLaunchDescription(
@@ -34,6 +35,7 @@ def generate_launch_description():
             'robot_ip': robot_ip,
             'calibration_file': calibration_file,
             'ur_type': ur_type,
+            'initial_joint_controller': initial_joint_controller,
             'launch_rviz': 'false', # Default: false
             'trajectory_velocity_scaling': trajectory_velocity_scaling,
             'trajectory_acceleration_scaling': trajectory_acceleration_scaling,

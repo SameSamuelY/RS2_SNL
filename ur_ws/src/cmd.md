@@ -37,14 +37,15 @@ ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \
     planner_id:=RRTConnectkConfigDefault \
     ignore_if_busy:=false \
-    trajectory_velocity_scaling:=0.1 \
-    trajectory_acceleration_scaling:=0.1
+    trajectory_velocity_scaling:=0.05 \
+    trajectory_acceleration_scaling:=0.05
 
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \
     planner_id:=RRTstarkConfigDefault \
     ignore_if_busy:=false
 # GUI & gripper driver
+
 
 # Terminal 2 Driver (Real Connection)
 ros2 launch ur_robot_driver ur_control.launch.py ur_type:=ur3 robot_ip:=192.168.0.195 launch_rviz:=false
@@ -89,7 +90,7 @@ ros2 run ur3_planner ur3_planner_listener \
     -p planner_id:=RRTstarkConfigDefault
 
 # Terminal 5 Goal Pose Publisher GUI
-cd ~/ur_ws
+cd ~/git/RS2_SNL/ur_ws/
 chmod +x src/ur3_planner/src/ur3_goal_gui.py
 python3 src/ur3_planner/src/ur3_goal_gui.py
 

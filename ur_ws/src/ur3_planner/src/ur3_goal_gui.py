@@ -38,17 +38,17 @@ class Application:
 
         ttk.Label(pos_frame, text="X:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.x_entry = ttk.Entry(pos_frame, width=10)
-        self.x_entry.insert(0, "0.3")
+        self.x_entry.insert(0, "0.1")
         self.x_entry.grid(row=0, column=1, padx=5, pady=5)
 
         ttk.Label(pos_frame, text="Y:").grid(row=0, column=2, padx=5, pady=5, sticky="e")
         self.y_entry = ttk.Entry(pos_frame, width=10)
-        self.y_entry.insert(0, "0.3")
+        self.y_entry.insert(0, "0.4")
         self.y_entry.grid(row=0, column=3, padx=5, pady=5)
 
         ttk.Label(pos_frame, text="Z:").grid(row=0, column=4, padx=5, pady=5, sticky="e")
         self.z_entry = ttk.Entry(pos_frame, width=10)
-        self.z_entry.insert(0, "0.3")
+        self.z_entry.insert(0, "0.2")
         self.z_entry.grid(row=0, column=5, padx=5, pady=5)
 
         # Orientation frame (quaternion)
@@ -57,12 +57,12 @@ class Application:
 
         ttk.Label(quat_frame, text="qx:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
         self.qx_entry = ttk.Entry(quat_frame, width=8)
-        self.qx_entry.insert(0, "0.0")
+        self.qx_entry.insert(0, "0.707")
         self.qx_entry.grid(row=0, column=1, padx=5, pady=5)
 
         ttk.Label(quat_frame, text="qy:").grid(row=0, column=2, padx=5, pady=5, sticky="e")
         self.qy_entry = ttk.Entry(quat_frame, width=8)
-        self.qy_entry.insert(0, "1.0")
+        self.qy_entry.insert(0, "0.707")
         self.qy_entry.grid(row=0, column=3, padx=5, pady=5)
 
         ttk.Label(quat_frame, text="qz:").grid(row=0, column=4, padx=5, pady=5, sticky="e")

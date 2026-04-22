@@ -6,7 +6,9 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <geometry_msgs/msg/pose.hpp>
+
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <controller_manager_msgs/srv/list_controllers.hpp>
 #include <controller_manager_msgs/srv/switch_controller.hpp>
@@ -33,14 +35,31 @@ public:
       std::bind(&Ur3PlannerListener::poseCallback, this, std::placeholders::_1)
     );
 
+    ex_control_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+      "/io_and_status_controller/robot_program_running", 10,
+      [this](const std_msgs::msg::Bool::SharedPtr msg) {
+          {
+              std::lock_guard<std::mutex> lock(ex_control_mutex_);
+              ex_control_running_ = msg->data;
+          }
+          ex_control_condition_.notify_all();
+      });
+
     status_publisher_ = this->create_publisher<std_msgs::msg::String>("/motion_status", 10);
     publish_status("idle");
+
+    
 
     RCLCPP_INFO(this->get_logger(), "Node started. Listening for poses on /ur3_goal_pose");
     RCLCPP_INFO(this->get_logger(), "Planning group: %s", planning_group_.c_str());
   }
 
 private:
+  bool wait_for_ex_control_running(std::chrono::seconds timeout = std::chrono::seconds(5)) {
+    std::unique_lock<std::mutex> lock(ex_control_mutex_);
+    return ex_control_condition_.wait_for(lock, timeout, [this] { return ex_control_running_.load(); });
+  }
+
   void publish_status(const std::string &status)
   {
     std_msgs::msg::String msg;
@@ -105,6 +124,18 @@ private:
     std::thread([this, msg]() {
       try
       {
+        // Wait for robot program to be running (timeout 5 seconds)
+        if (!wait_for_ex_control_running()) {
+          RCLCPP_ERROR(this->get_logger(), "Robot program not running. Please start External Control on the robot.");
+          // Mark not busy and return early
+          {
+              std::lock_guard<std::mutex> lock(ex_control_mutex_);
+              is_busy_ = false;
+          }
+          ex_control_condition_.notify_all();
+          return;
+        }
+        
         // Activate controller
         publish_status("activating_controller");
         auto client = this->create_client<controller_manager_msgs::srv::SwitchController>(
@@ -115,6 +146,7 @@ private:
         rclcpp::sleep_for(std::chrono::milliseconds(1000));
         print_controller_status("scaled_joint_trajectory_controller");
         
+        
         publish_status("planning");
         auto move_group_interface =
           std::make_shared<moveit::planning_interface::MoveGroupInterface>(
@@ -122,6 +154,11 @@ private:
             planning_group_
           );
         rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+        // final goal accuracy
+        move_group_interface->setGoalJointTolerance(0.1);        // rad
+        move_group_interface->setGoalPositionTolerance(0.05);    // m
+        move_group_interface->setGoalOrientationTolerance(0.1);  // rad
         // Set planning time (seconds)
         move_group_interface->setPlanningTime(30.0);
         // Set the planner ID from parameter (default is RRTConnectkConfigDefault)
@@ -176,12 +213,17 @@ private:
   bool execute_immediately_;
   bool ignore_if_busy_;
   std::string planner_id_;
-  
+
   std::atomic<bool> is_busy_;
   std::mutex mutex_;
   std::condition_variable condition_;
+
+  std::atomic<bool> ex_control_running_{false};
+  std::mutex ex_control_mutex_;
+  std::condition_variable ex_control_condition_;
   
   rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr subscription_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr ex_control_sub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_publisher_;
 };
 
