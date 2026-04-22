@@ -36,7 +36,9 @@ ros2 run ur_client_library start_ursim.sh \
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \
     planner_id:=RRTConnectkConfigDefault \
-    ignore_if_busy:=false
+    ignore_if_busy:=false \
+    trajectory_velocity_scaling:=0.1 \
+    trajectory_acceleration_scaling:=0.1
 
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \

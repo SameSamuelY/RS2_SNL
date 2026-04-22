@@ -15,6 +15,7 @@ find_package(moveit_ros_planning_interface REQUIRED)
 find_package(moveit_visual_tools REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(controller_manager_msgs REQUIRED)
 
 
 add_executable(ur3_planner src/ur3_planner.cpp)
@@ -28,6 +29,7 @@ ament_target_dependencies(
   "moveit_visual_tools"
   "rclcpp"
   "geometry_msgs"
+  "controller_manager_msgs"
 )
 install(TARGETS ur3_planner
   DESTINATION lib/${PROJECT_NAME})
@@ -44,6 +46,7 @@ ament_target_dependencies(
   "moveit_visual_tools"
   "rclcpp"
   "geometry_msgs"
+  "controller_manager_msgs"
 )
 install(TARGETS ur3_planner_listener
   DESTINATION lib/${PROJECT_NAME})

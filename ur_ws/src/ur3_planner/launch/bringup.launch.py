@@ -72,6 +72,12 @@ def generate_launch_description():
         output='screen'
     )
 
+    # Activate controller
+    activate_controller = ExecuteProcess(
+        cmd=['ros2', 'control', 'switch_controllers', '--activate', 'scaled_joint_trajectory_controller'],
+        output='screen'
+    )
+
     # 4. Gripper driver
     gripper_driver = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
