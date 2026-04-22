@@ -31,13 +31,9 @@ class GuiROSNode(Node):
     def __init__(self):
         super().__init__('gui_controller')
 
-        # Publish target pose to motion planning subsystem
         self.goal_publisher = self.create_publisher(Pose, '/ur3_goal_pose', 10)
-
-        # Publish optional high-level GUI commands
         self.command_publisher = self.create_publisher(String, '/gui_command', 10)
 
-        # Subscribe to motion planning feedback
         self.motion_status_subscriber = self.create_subscription(
             String,
             '/motion_status',
@@ -46,7 +42,6 @@ class GuiROSNode(Node):
         )
 
         self.latest_motion_status = "idle"
-
         self.get_logger().info("GUI ROS node ready")
 
     def publish_goal(self, pose: Pose):
@@ -217,7 +212,8 @@ class RobotGUI(QMainWindow):
         self.status_refresh_timer.start(100)
 
     def spin_ros_once(self):
-        rclpy.spin_once(self.ros_node, timeout_sec=0.0)
+        if rclpy.ok():
+            rclpy.spin_once(self.ros_node, timeout_sec=0.0)
 
     def build_content(self):
         content_layout = QHBoxLayout()
@@ -283,8 +279,6 @@ class RobotGUI(QMainWindow):
     def build_goal_group(self):
         group = QGroupBox("Goal Pose Input")
         layout = QGridLayout()
-        layout.setHorizontalSpacing(12)
-        layout.setVerticalSpacing(10)
 
         x_label = QLabel("Goal X (m):")
         x_label.setObjectName("InfoLabel")
@@ -318,13 +312,10 @@ class RobotGUI(QMainWindow):
 
         layout.addWidget(x_label, 0, 0)
         layout.addWidget(self.goal_x_input, 0, 1)
-
         layout.addWidget(y_label, 1, 0)
         layout.addWidget(self.goal_y_input, 1, 1)
-
         layout.addWidget(z_label, 2, 0)
         layout.addWidget(self.goal_z_input, 2, 1)
-
         layout.addWidget(note_label, 3, 0, 1, 2)
 
         group.setLayout(layout)
@@ -333,8 +324,6 @@ class RobotGUI(QMainWindow):
     def build_status_group(self):
         group = QGroupBox("System Status")
         layout = QGridLayout()
-        layout.setHorizontalSpacing(15)
-        layout.setVerticalSpacing(10)
 
         state_label = QLabel("Current State:")
         state_label.setObjectName("StateLabel")
@@ -357,7 +346,6 @@ class RobotGUI(QMainWindow):
     def build_motion_group(self):
         group = QGroupBox("Motion Planning Feedback")
         layout = QVBoxLayout()
-        layout.setSpacing(8)
 
         self.motion_status_label = QLabel("Motion Status: idle")
         self.motion_status_label.setObjectName("InfoLabel")
@@ -418,7 +406,6 @@ class RobotGUI(QMainWindow):
     def build_info_group(self):
         group = QGroupBox("Subsystem Information")
         layout = QVBoxLayout()
-        layout.setSpacing(8)
 
         self.mode_label = QLabel("Mode: Manual GUI Control")
         self.mode_label.setObjectName("InfoLabel")
@@ -491,8 +478,6 @@ class RobotGUI(QMainWindow):
         goal_pose.position.x = self.goal_x_input.value()
         goal_pose.position.y = self.goal_y_input.value()
         goal_pose.position.z = self.goal_z_input.value()
-
-        # Neutral orientation for simple testing
         goal_pose.orientation.x = 0.0
         goal_pose.orientation.y = 0.0
         goal_pose.orientation.z = 0.0
@@ -509,26 +494,18 @@ class RobotGUI(QMainWindow):
             f"z={goal_pose.position.z:.3f}"
         )
 
-        self.update_state_display(
-            "Executing",
-            "Goal pose sent to motion planning subsystem."
-        )
+        self.update_state_display("Executing", "Goal pose sent to motion planning subsystem.")
 
     def stop_system(self):
         self.ros_node.publish_command("stop")
         self.last_command_label.setText("Last Command: Stop")
         self.append_log("Stop button pressed. Published command: stop")
-
-        self.update_state_display(
-            "Stopped",
-            "Stop requested. Motion planner should handle cancellation if implemented."
-        )
+        self.update_state_display("Stopped", "Stop requested. Motion planner should handle cancellation if implemented.")
 
     def reset_system(self):
         self.ros_node.publish_command("reset")
         self.last_command_label.setText("Last Command: Reset")
         self.append_log("Reset button pressed. Published command: reset")
-
         self.update_state_display("Idle", "System reset to idle state.")
 
     def refresh_motion_status(self):
@@ -544,76 +521,51 @@ class RobotGUI(QMainWindow):
             self.motion_stage_label.setText("Stage: Waiting for command")
             self.update_state_display("Idle", "Motion planner is idle.")
             self.append_log("Motion planner status: idle")
-
         elif status == "planning":
             self.motion_stage_label.setText("Stage: Generating trajectory")
             self.update_state_display("Executing", "Motion planner is generating a trajectory.")
             self.append_log("Motion planner status: planning")
-
-        elif status == "moving":
+        elif status == "executing":
             self.motion_stage_label.setText("Stage: Executing trajectory")
-            self.update_state_display("Executing", "Robot is moving to the target pose.")
-            self.append_log("Motion planner status: moving")
-
-        elif status == "moving_to_pick":
-            self.motion_stage_label.setText("Stage: Moving to pick position")
-            self.update_state_display("Executing", "Robot is moving to the pick position.")
-            self.append_log("Motion planner status: moving_to_pick")
-
-        elif status == "grasping":
-            self.motion_stage_label.setText("Stage: Grasping object")
-            self.update_state_display("Executing", "Robot is attempting to grasp the object.")
-            self.append_log("Motion planner status: grasping")
-
-        elif status == "moving_to_place":
-            self.motion_stage_label.setText("Stage: Moving to place position")
-            self.update_state_display("Executing", "Robot is moving to the place position.")
-            self.append_log("Motion planner status: moving_to_place")
-
-        elif status == "returning_home":
-            self.motion_stage_label.setText("Stage: Returning home")
-            self.update_state_display("Executing", "Robot is returning to the home pose.")
-            self.append_log("Motion planner status: returning_home")
-
+            self.update_state_display("Executing", "Robot is executing the planned trajectory.")
+            self.append_log("Motion planner status: executing")
         elif status == "completed":
             self.motion_stage_label.setText("Stage: Task completed")
             self.update_state_display("Completed", "Motion planner completed the task successfully.")
             self.append_log("Motion planner status: completed")
-
         elif status == "failed":
             self.motion_stage_label.setText("Stage: Task failed")
             self.update_state_display("Stopped", "Motion planner reported task failure.")
             self.append_log("Motion planner status: failed")
-
-        elif status == "stopped":
-            self.motion_stage_label.setText("Stage: Execution stopped")
-            self.update_state_display("Stopped", "Motion planner stopped execution.")
-            self.append_log("Motion planner status: stopped")
-
+        elif status == "busy":
+            self.motion_stage_label.setText("Stage: Busy")
+            self.update_state_display("Executing", "Motion planner is busy with another request.")
+            self.append_log("Motion planner status: busy")
         else:
             self.motion_stage_label.setText(f"Stage: {status}")
             self.update_state_display("Executing", f"Received motion status: {status}")
             self.append_log(f"Motion planner status: {status}")
 
-  def closeEvent(self, event):
-    try:
-        self.append_log("Closing GUI and shutting down ROS2.")
-    except Exception:
-        pass
+    def closeEvent(self, event):
+        try:
+            self.append_log("Closing GUI and shutting down ROS2.")
+        except Exception:
+            pass
 
-    try:
-        if self.ros_node is not None:
-            self.ros_node.destroy_node()
-    except Exception:
-        pass
+        try:
+            if self.ros_node is not None:
+                self.ros_node.destroy_node()
+        except Exception:
+            pass
 
-    try:
-        if rclpy.ok():
-            rclpy.shutdown()
-    except Exception:
-        pass
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
-    event.accept()
+        event.accept()
+
 
 def main(args=None):
     app = QApplication(sys.argv)
@@ -623,7 +575,7 @@ def main(args=None):
     window.show()
 
     exit_code = app.exec_()
-    sys.exit(app.exec_())
+    sys.exit(exit_code)
 
 
 if __name__ == '__main__':
