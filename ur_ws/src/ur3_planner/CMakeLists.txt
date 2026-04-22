@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(ur3_planner)
 
+# Force C++17 (required for MoveIt 2)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -8,8 +9,10 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
+find_package(moveit_visual_tools REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(controller_manager_msgs REQUIRED)
@@ -23,6 +26,7 @@ target_include_directories(ur3_planner PRIVATE
 ament_target_dependencies(
   ur3_planner
   moveit_ros_planning_interface
+  moveit_visual_tools
   rclcpp
   geometry_msgs
   controller_manager_msgs
@@ -40,6 +44,7 @@ target_include_directories(ur3_planner_listener PRIVATE
 ament_target_dependencies(
   ur3_planner_listener
   moveit_ros_planning_interface
+  moveit_visual_tools
   rclcpp
   geometry_msgs
   controller_manager_msgs
