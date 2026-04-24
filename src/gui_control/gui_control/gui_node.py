@@ -7,7 +7,7 @@ import rclpy
 from rclpy.node import Node
 
 from geometry_msgs.msg import Pose
-from std_msgs.msg import String
+from std_msgs.msg import String, Float64
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
@@ -24,6 +24,7 @@ from PyQt5.QtWidgets import (
     QSizePolicy,
     QDoubleSpinBox,
     QMainWindow,
+    QSlider,
 )
 
 
@@ -33,6 +34,7 @@ class GuiROSNode(Node):
 
         self.goal_publisher = self.create_publisher(Pose, '/ur3_goal_pose', 10)
         self.command_publisher = self.create_publisher(String, '/gui_command', 10)
+        self.gripper_publisher = self.create_publisher(Float64, '/gripper_width', 10)
 
         self.motion_status_subscriber = self.create_subscription(
             String,
@@ -50,7 +52,11 @@ class GuiROSNode(Node):
             f"Published goal pose: "
             f"x={pose.position.x:.3f}, "
             f"y={pose.position.y:.3f}, "
-            f"z={pose.position.z:.3f}"
+            f"z={pose.position.z:.3f}, "
+            f"qx={pose.orientation.x:.3f}, "
+            f"qy={pose.orientation.y:.3f}, "
+            f"qz={pose.orientation.z:.3f}, "
+            f"qw={pose.orientation.w:.3f}"
         )
 
     def publish_command(self, command_text: str):
@@ -58,6 +64,12 @@ class GuiROSNode(Node):
         msg.data = command_text
         self.command_publisher.publish(msg)
         self.get_logger().info(f"Published GUI command: {command_text}")
+
+    def publish_gripper_width(self, width: float):
+        msg = Float64()
+        msg.data = width
+        self.gripper_publisher.publish(msg)
+        self.get_logger().info(f"Published gripper width: {width:.3f} m")
 
     def motion_status_callback(self, msg: String):
         self.latest_motion_status = msg.data
@@ -79,8 +91,8 @@ class RobotGUI(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle("Subsystem 3 - Interaction and Execution")
-        self.setGeometry(200, 120, 1100, 700)
-        self.setMinimumSize(950, 620)
+        self.setGeometry(200, 120, 1150, 760)
+        self.setMinimumSize(980, 680)
 
         self.setStyleSheet("""
             QWidget {
@@ -133,6 +145,12 @@ class RobotGUI(QMainWindow):
                 font-size: 14px;
                 font-weight: bold;
                 min-height: 42px;
+                background-color: #344054;
+                color: white;
+            }
+
+            QPushButton:hover {
+                background-color: #1f2937;
             }
 
             QPushButton#StartButton {
@@ -188,6 +206,10 @@ class RobotGUI(QMainWindow):
                 padding: 4px;
                 min-height: 28px;
             }
+
+            QSlider {
+                padding: 8px;
+            }
         """)
 
         central_widget = QWidget()
@@ -227,6 +249,7 @@ class RobotGUI(QMainWindow):
 
         left_panel.addWidget(self.build_control_group(), 0)
         left_panel.addWidget(self.build_goal_group(), 0)
+        left_panel.addWidget(self.build_gripper_group(), 0)
         left_panel.addWidget(self.build_status_group(), 0)
         left_panel.addWidget(self.build_motion_group(), 0)
         left_panel.addWidget(self.build_log_group(), 1)
@@ -245,8 +268,8 @@ class RobotGUI(QMainWindow):
         layout.setSpacing(12)
 
         instruction = QLabel(
-            "Use the buttons below to control the subsystem. "
-            "Start publishes a target pose to motion planning."
+            "Use Start/Stop/Reset for high-level execution. "
+            "Use Cartesian Goal and Gripper Control for direct subsystem integration."
         )
         instruction.setWordWrap(True)
         instruction.setObjectName("InfoLabel")
@@ -277,46 +300,106 @@ class RobotGUI(QMainWindow):
         return group
 
     def build_goal_group(self):
-        group = QGroupBox("Goal Pose Input")
+        group = QGroupBox("Cartesian Goal")
         layout = QGridLayout()
+        layout.setHorizontalSpacing(12)
+        layout.setVerticalSpacing(10)
 
-        x_label = QLabel("Goal X (m):")
-        x_label.setObjectName("InfoLabel")
         self.goal_x_input = QDoubleSpinBox()
         self.goal_x_input.setRange(-1.0, 1.0)
-        self.goal_x_input.setSingleStep(0.01)
         self.goal_x_input.setDecimals(3)
-        self.goal_x_input.setValue(0.300)
+        self.goal_x_input.setSingleStep(0.01)
+        self.goal_x_input.setValue(-0.300)
 
-        y_label = QLabel("Goal Y (m):")
-        y_label.setObjectName("InfoLabel")
         self.goal_y_input = QDoubleSpinBox()
         self.goal_y_input.setRange(-1.0, 1.0)
-        self.goal_y_input.setSingleStep(0.01)
         self.goal_y_input.setDecimals(3)
+        self.goal_y_input.setSingleStep(0.01)
         self.goal_y_input.setValue(-0.200)
 
-        z_label = QLabel("Goal Z (m):")
-        z_label.setObjectName("InfoLabel")
         self.goal_z_input = QDoubleSpinBox()
         self.goal_z_input.setRange(0.0, 1.5)
-        self.goal_z_input.setSingleStep(0.01)
         self.goal_z_input.setDecimals(3)
-        self.goal_z_input.setValue(0.500)
+        self.goal_z_input.setSingleStep(0.01)
+        self.goal_z_input.setValue(0.010)
 
-        note_label = QLabel(
-            "These values are sent as a Pose to /ur3_goal_pose when Start is pressed."
-        )
-        note_label.setWordWrap(True)
+        self.qx_input = QDoubleSpinBox()
+        self.qx_input.setRange(-1.0, 1.0)
+        self.qx_input.setDecimals(3)
+        self.qx_input.setSingleStep(0.001)
+        self.qx_input.setValue(0.000)
+
+        self.qy_input = QDoubleSpinBox()
+        self.qy_input.setRange(-1.0, 1.0)
+        self.qy_input.setDecimals(3)
+        self.qy_input.setSingleStep(0.001)
+        self.qy_input.setValue(0.707)
+
+        self.qz_input = QDoubleSpinBox()
+        self.qz_input.setRange(-1.0, 1.0)
+        self.qz_input.setDecimals(3)
+        self.qz_input.setSingleStep(0.001)
+        self.qz_input.setValue(0.000)
+
+        self.qw_input = QDoubleSpinBox()
+        self.qw_input.setRange(-1.0, 1.0)
+        self.qw_input.setDecimals(3)
+        self.qw_input.setSingleStep(0.001)
+        self.qw_input.setValue(0.707)
+
+        self.send_pose_button = QPushButton("Send Pose Goal")
+        self.send_pose_button.clicked.connect(self.start_system_with_goal)
+
+        layout.addWidget(QLabel("X:"), 0, 0)
+        layout.addWidget(self.goal_x_input, 0, 1)
+
+        layout.addWidget(QLabel("Y:"), 0, 2)
+        layout.addWidget(self.goal_y_input, 0, 3)
+
+        layout.addWidget(QLabel("Z:"), 0, 4)
+        layout.addWidget(self.goal_z_input, 0, 5)
+
+        layout.addWidget(QLabel("qx:"), 1, 0)
+        layout.addWidget(self.qx_input, 1, 1)
+
+        layout.addWidget(QLabel("qy:"), 1, 2)
+        layout.addWidget(self.qy_input, 1, 3)
+
+        layout.addWidget(QLabel("qz:"), 1, 4)
+        layout.addWidget(self.qz_input, 1, 5)
+
+        layout.addWidget(QLabel("qw:"), 2, 0)
+        layout.addWidget(self.qw_input, 2, 1)
+
+        layout.addWidget(self.send_pose_button, 2, 2, 1, 4)
+
+        group.setLayout(layout)
+        return group
+
+    def build_gripper_group(self):
+        group = QGroupBox("Gripper Control")
+        layout = QVBoxLayout()
+        layout.setSpacing(8)
+
+        self.gripper_width_label = QLabel("Width: 0.020 m")
+        self.gripper_width_label.setObjectName("InfoLabel")
+
+        self.gripper_slider = QSlider(Qt.Horizontal)
+        self.gripper_slider.setMinimum(0)
+        self.gripper_slider.setMaximum(110)
+        self.gripper_slider.setValue(20)
+        self.gripper_slider.valueChanged.connect(self.update_gripper_label)
+
+        self.send_gripper_button = QPushButton("Send Gripper Command")
+        self.send_gripper_button.clicked.connect(self.send_gripper_command)
+
+        note_label = QLabel("Range: 0.000 m to 0.110 m")
         note_label.setObjectName("InfoLabel")
 
-        layout.addWidget(x_label, 0, 0)
-        layout.addWidget(self.goal_x_input, 0, 1)
-        layout.addWidget(y_label, 1, 0)
-        layout.addWidget(self.goal_y_input, 1, 1)
-        layout.addWidget(z_label, 2, 0)
-        layout.addWidget(self.goal_z_input, 2, 1)
-        layout.addWidget(note_label, 3, 0, 1, 2)
+        layout.addWidget(self.gripper_width_label)
+        layout.addWidget(self.gripper_slider)
+        layout.addWidget(note_label)
+        layout.addWidget(self.send_gripper_button)
 
         group.setLayout(layout)
         return group
@@ -324,6 +407,8 @@ class RobotGUI(QMainWindow):
     def build_status_group(self):
         group = QGroupBox("System Status")
         layout = QGridLayout()
+        layout.setHorizontalSpacing(15)
+        layout.setVerticalSpacing(10)
 
         state_label = QLabel("Current State:")
         state_label.setObjectName("StateLabel")
@@ -346,6 +431,7 @@ class RobotGUI(QMainWindow):
     def build_motion_group(self):
         group = QGroupBox("Motion Planning Feedback")
         layout = QVBoxLayout()
+        layout.setSpacing(8)
 
         self.motion_status_label = QLabel("Motion Status: idle")
         self.motion_status_label.setObjectName("InfoLabel")
@@ -406,6 +492,7 @@ class RobotGUI(QMainWindow):
     def build_info_group(self):
         group = QGroupBox("Subsystem Information")
         layout = QVBoxLayout()
+        layout.setSpacing(8)
 
         self.mode_label = QLabel("Mode: Manual GUI Control")
         self.mode_label.setObjectName("InfoLabel")
@@ -416,8 +503,11 @@ class RobotGUI(QMainWindow):
         self.last_command_label = QLabel("Last Command: None")
         self.last_command_label.setObjectName("InfoLabel")
 
-        self.integration_label = QLabel("Integration: Publishing Pose goals to motion planning")
+        self.integration_label = QLabel(
+            "Integration: /ur3_goal_pose, /gui_command, /gripper_width, /motion_status"
+        )
         self.integration_label.setObjectName("InfoLabel")
+        self.integration_label.setWordWrap(True)
 
         layout.addWidget(self.mode_label)
         layout.addWidget(self.connection_label)
@@ -437,75 +527,88 @@ class RobotGUI(QMainWindow):
         self.status_message.setText(message)
 
         if state == "Executing":
-            self.state_value.setStyleSheet("""
-                font-size: 18px;
-                font-weight: bold;
-                padding: 8px 14px;
-                border-radius: 8px;
-                background-color: #e8f5e9;
-                color: #2e7d32;
-            """)
+            bg = "#e8f5e9"
+            color = "#2e7d32"
         elif state == "Stopped":
-            self.state_value.setStyleSheet("""
-                font-size: 18px;
-                font-weight: bold;
-                padding: 8px 14px;
-                border-radius: 8px;
-                background-color: #fdecea;
-                color: #c62828;
-            """)
+            bg = "#fdecea"
+            color = "#c62828"
         elif state == "Completed":
-            self.state_value.setStyleSheet("""
-                font-size: 18px;
-                font-weight: bold;
-                padding: 8px 14px;
-                border-radius: 8px;
-                background-color: #e3f2fd;
-                color: #1565c0;
-            """)
+            bg = "#e3f2fd"
+            color = "#1565c0"
         else:
-            self.state_value.setStyleSheet("""
-                font-size: 18px;
-                font-weight: bold;
-                padding: 8px 14px;
-                border-radius: 8px;
-                background-color: #e9ecef;
-                color: #212529;
-            """)
+            bg = "#e9ecef"
+            color = "#212529"
+
+        self.state_value.setStyleSheet(f"""
+            font-size: 18px;
+            font-weight: bold;
+            padding: 8px 14px;
+            border-radius: 8px;
+            background-color: {bg};
+            color: {color};
+        """)
 
     def start_system_with_goal(self):
         goal_pose = Pose()
+
         goal_pose.position.x = self.goal_x_input.value()
         goal_pose.position.y = self.goal_y_input.value()
         goal_pose.position.z = self.goal_z_input.value()
-        goal_pose.orientation.x = 0.0
-        goal_pose.orientation.y = 0.0
-        goal_pose.orientation.z = 0.0
-        goal_pose.orientation.w = 1.0
+
+        goal_pose.orientation.x = self.qx_input.value()
+        goal_pose.orientation.y = self.qy_input.value()
+        goal_pose.orientation.z = self.qz_input.value()
+        goal_pose.orientation.w = self.qw_input.value()
 
         self.ros_node.publish_goal(goal_pose)
         self.ros_node.publish_command("start")
 
-        self.last_command_label.setText("Last Command: Start (goal published)")
+        self.last_command_label.setText("Last Command: Pose goal sent")
+
         self.append_log(
-            f"Published goal pose to /ur3_goal_pose: "
-            f"x={goal_pose.position.x:.3f}, "
-            f"y={goal_pose.position.y:.3f}, "
-            f"z={goal_pose.position.z:.3f}"
+            f"Pose sent: "
+            f"({goal_pose.position.x:.3f}, "
+            f"{goal_pose.position.y:.3f}, "
+            f"{goal_pose.position.z:.3f}) / "
+            f"({goal_pose.orientation.x:.3f}, "
+            f"{goal_pose.orientation.y:.3f}, "
+            f"{goal_pose.orientation.z:.3f}, "
+            f"{goal_pose.orientation.w:.3f})"
         )
 
-        self.update_state_display("Executing", "Goal pose sent to motion planning subsystem.")
+        self.update_state_display(
+            "Executing",
+            "Cartesian pose goal sent to motion planning subsystem."
+        )
+
+    def update_gripper_label(self):
+        width = self.gripper_slider.value() / 1000.0
+        self.gripper_width_label.setText(f"Width: {width:.3f} m")
+
+    def send_gripper_command(self):
+        width = self.gripper_slider.value() / 1000.0
+
+        self.ros_node.publish_gripper_width(width)
+        self.ros_node.publish_command("gripper")
+
+        self.append_log(f"Published gripper width: {width:.3f} m")
+        self.last_command_label.setText("Last Command: Gripper command sent")
 
     def stop_system(self):
         self.ros_node.publish_command("stop")
         self.last_command_label.setText("Last Command: Stop")
         self.append_log("Stop button pressed. Published command: stop")
-        self.update_state_display("Stopped", "Stop requested. Motion planner should handle cancellation if implemented.")
+
+        self.update_state_display(
+            "Stopped",
+            "Stop requested. Motion planner should handle cancellation if implemented."
+        )
 
     def reset_system(self):
         self.ros_node.publish_command("reset")
         self.last_command_label.setText("Last Command: Reset")
         self.append_log("Reset button pressed. Published command: reset")
+
         self.update_state_display("Idle", "System reset to idle state.")
 
     def refresh_motion_status(self):
@@ -520,31 +623,56 @@ class RobotGUI(QMainWindow):
         if status == "idle":
             self.motion_stage_label.setText("Stage: Waiting for command")
             self.update_state_display("Idle", "Motion planner is idle.")
-            self.append_log("Motion planner status: idle")
+
         elif status == "planning":
             self.motion_stage_label.setText("Stage: Generating trajectory")
             self.update_state_display("Executing", "Motion planner is generating a trajectory.")
-            self.append_log("Motion planner status: planning")
+
+        elif status == "moving":
+            self.motion_stage_label.setText("Stage: Executing trajectory")
+            self.update_state_display("Executing", "Robot is moving to the target pose.")
+
         elif status == "executing":
             self.motion_stage_label.setText("Stage: Executing trajectory")
             self.update_state_display("Executing", "Robot is executing the planned trajectory.")
-            self.append_log("Motion planner status: executing")
+
+        elif status == "moving_to_pick":
+            self.motion_stage_label.setText("Stage: Moving to pick position")
+            self.update_state_display("Executing", "Robot is moving to the pick position.")
+
+        elif status == "grasping":
+            self.motion_stage_label.setText("Stage: Grasping object")
+            self.update_state_display("Executing", "Robot is attempting to grasp the object.")
+
+        elif status == "moving_to_place":
+            self.motion_stage_label.setText("Stage: Moving to place position")
+            self.update_state_display("Executing", "Robot is moving to the place position.")
+
+        elif status == "returning_home":
+            self.motion_stage_label.setText("Stage: Returning home")
+            self.update_state_display("Executing", "Robot is returning to the home pose.")
+
         elif status == "completed":
             self.motion_stage_label.setText("Stage: Task completed")
             self.update_state_display("Completed", "Motion planner completed the task successfully.")
-            self.append_log("Motion planner status: completed")
+
         elif status == "failed":
             self.motion_stage_label.setText("Stage: Task failed")
             self.update_state_display("Stopped", "Motion planner reported task failure.")
-            self.append_log("Motion planner status: failed")
+
+        elif status == "stopped":
+            self.motion_stage_label.setText("Stage: Execution stopped")
+            self.update_state_display("Stopped", "Motion planner stopped execution.")
+
         elif status == "busy":
             self.motion_stage_label.setText("Stage: Busy")
             self.update_state_display("Executing", "Motion planner is busy with another request.")
-            self.append_log("Motion planner status: busy")
+
         else:
             self.motion_stage_label.setText(f"Stage: {status}")
             self.update_state_display("Executing", f"Received motion status: {status}")
-            self.append_log(f"Motion planner status: {status}")
+
+        self.append_log(f"Motion planner status: {status}")
 
     def closeEvent(self, event):
         try:
