@@ -32,7 +32,7 @@ ros2 run ur_client_library start_ursim.sh \
   -m ur3 \
   -f "-p 5900:5900 -p 6080:6080 -p 30001-30004:30001-30004 -p 29999:29999"
 
-# Terminal 2-4 bringup.launch
+# Terminal 2-4 bringup.launch (Sim Default)
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \
     planner_id:=RRTConnectkConfigDefault \
@@ -41,11 +41,23 @@ ros2 launch ur3_planner bringup.launch.py \
     trajectory_acceleration_scaling:=0.1 \
     connection_type:=serial
 
+# Terminal 2-4 bringup.launch (Real Default)
+ros2 launch ur3_planner bringup.launch.py \
+    robot_ip:=192.168.0.195 \
+    planner_id:=RRTConnectkConfigDefault \
+    ignore_if_busy:=true \
+    trajectory_velocity_scaling:=0.1 \
+    trajectory_acceleration_scaling:=0.1 \
+    connection_type:=serial
+
+# Terminal 2-4 bringup.launch (Sim star moveit config)
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \
     planner_id:=RRTstarkConfigDefault \
     ignore_if_busy:=false
-# GUI & gripper driver
+
+# gripper driver
+
 
 
 # Terminal 2 Driver (Real Connection)
