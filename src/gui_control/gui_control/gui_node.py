@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 
 import sys
+import json
 from datetime import datetime
 
 import rclpy
 from rclpy.node import Node
 
 from geometry_msgs.msg import Pose
-from std_msgs.msg import String, Float64
+from std_msgs.msg import String, Float64, Float64MultiArray
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 
 from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
     QWidget,
@@ -25,6 +29,8 @@ from PyQt5.QtWidgets import (
     QDoubleSpinBox,
     QMainWindow,
     QSlider,
+    QScrollArea,
+    QComboBox,
 )
 
 
@@ -33,8 +39,38 @@ class GuiROSNode(Node):
         super().__init__('gui_controller')
 
         self.goal_publisher = self.create_publisher(Pose, '/ur3_goal_pose', 10)
+        self.place_goal_publisher = self.create_publisher(Pose, '/place_goal_pose', 10)
         self.command_publisher = self.create_publisher(String, '/gui_command', 10)
-        self.gripper_publisher = self.create_publisher(Float64, '/gripper_width', 10)
+
+        # Matches friend’s working gripper GUI
+        self.gripper_publisher = self.create_publisher(
+            Float64MultiArray,
+            '/finger_width_controller/commands',
+            10
+        )
+
+        self.velocity_publisher = self.create_publisher(Float64, '/velocity_scale', 10)
+
+        # Use this for RealSense
+        self.camera_topic = '/camera/camera/color/image_raw'
+
+        # For WSL burger test, change to:
+        # self.camera_topic = '/image'
+
+        self.bridge = CvBridge()
+        self.latest_camera_frame = None
+        self.latest_camera_error = ""
+
+        self.latest_motion_status = "idle"
+        self.latest_detection_result = []
+        self.latest_detection_error = ""
+
+        self.camera_subscriber = self.create_subscription(
+            Image,
+            self.camera_topic,
+            self.camera_callback,
+            10
+        )
 
         self.motion_status_subscriber = self.create_subscription(
             String,
@@ -43,37 +79,62 @@ class GuiROSNode(Node):
             10
         )
 
-        self.latest_motion_status = "idle"
+        self.detection_subscriber = self.create_subscription(
+            String,
+            '/detection_result',
+            self.detection_callback,
+            10
+        )
+
         self.get_logger().info("GUI ROS node ready")
 
     def publish_goal(self, pose: Pose):
         self.goal_publisher.publish(pose)
-        self.get_logger().info(
-            f"Published goal pose: "
-            f"x={pose.position.x:.3f}, "
-            f"y={pose.position.y:.3f}, "
-            f"z={pose.position.z:.3f}, "
-            f"qx={pose.orientation.x:.3f}, "
-            f"qy={pose.orientation.y:.3f}, "
-            f"qz={pose.orientation.z:.3f}, "
-            f"qw={pose.orientation.w:.3f}"
-        )
+        self.get_logger().info("Published pick goal pose")
+
+    def publish_place_goal(self, pose: Pose):
+        self.place_goal_publisher.publish(pose)
+        self.get_logger().info("Published place goal pose")
 
     def publish_command(self, command_text: str):
         msg = String()
         msg.data = command_text
         self.command_publisher.publish(msg)
-        self.get_logger().info(f"Published GUI command: {command_text}")
 
     def publish_gripper_width(self, width: float):
-        msg = Float64()
-        msg.data = width
+        msg = Float64MultiArray()
+        msg.data = [width]
         self.gripper_publisher.publish(msg)
         self.get_logger().info(f"Published gripper width: {width:.3f} m")
 
+    def publish_velocity_scale(self, scale: float):
+        msg = Float64()
+        msg.data = scale
+        self.velocity_publisher.publish(msg)
+
+    def camera_callback(self, msg: Image):
+        try:
+            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            self.latest_camera_frame = frame
+            self.latest_camera_error = ""
+        except Exception as error:
+            self.latest_camera_error = str(error)
+
     def motion_status_callback(self, msg: String):
         self.latest_motion_status = msg.data
-        self.get_logger().info(f"Received motion status: {msg.data}")
+
+    def detection_callback(self, msg: String):
+        try:
+            parsed_data = json.loads(msg.data)
+            if isinstance(parsed_data, list):
+                self.latest_detection_result = parsed_data
+                self.latest_detection_error = ""
+            else:
+                self.latest_detection_result = []
+                self.latest_detection_error = "Detection result is not a list."
+        except Exception as error:
+            self.latest_detection_result = []
+            self.latest_detection_error = str(error)
 
 
 class RobotGUI(QMainWindow):
@@ -91,8 +152,8 @@ class RobotGUI(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle("Subsystem 3 - Interaction and Execution")
-        self.setGeometry(200, 120, 1150, 760)
-        self.setMinimumSize(980, 680)
+        self.setGeometry(100, 80, 1200, 760)
+        self.setMinimumSize(1200, 720)
 
         self.setStyleSheet("""
             QWidget {
@@ -118,13 +179,13 @@ class RobotGUI(QMainWindow):
             }
 
             QLabel#StateLabel {
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: bold;
                 color: #1f2d3d;
             }
 
             QLabel#StateValue {
-                font-size: 18px;
+                font-size: 16px;
                 font-weight: bold;
                 padding: 8px 14px;
                 border-radius: 8px;
@@ -133,18 +194,18 @@ class RobotGUI(QMainWindow):
             }
 
             QLabel#InfoLabel {
-                font-size: 13px;
+                font-size: 12px;
                 color: #344054;
                 padding: 2px 0;
             }
 
             QPushButton {
                 border: none;
-                border-radius: 10px;
-                padding: 12px;
-                font-size: 14px;
+                border-radius: 8px;
+                padding: 8px;
+                font-size: 12px;
                 font-weight: bold;
-                min-height: 42px;
+                min-height: 32px;
                 background-color: #344054;
                 color: white;
             }
@@ -155,29 +216,14 @@ class RobotGUI(QMainWindow):
 
             QPushButton#StartButton {
                 background-color: #2e7d32;
-                color: white;
-            }
-
-            QPushButton#StartButton:hover {
-                background-color: #256628;
             }
 
             QPushButton#StopButton {
                 background-color: #c62828;
-                color: white;
-            }
-
-            QPushButton#StopButton:hover {
-                background-color: #a61f1f;
             }
 
             QPushButton#ResetButton {
                 background-color: #1565c0;
-                color: white;
-            }
-
-            QPushButton#ResetButton:hover {
-                background-color: #0f4f98;
             }
 
             QTextEdit {
@@ -199,16 +245,12 @@ class RobotGUI(QMainWindow):
                 font-size: 14px;
             }
 
-            QDoubleSpinBox {
+            QDoubleSpinBox, QComboBox {
                 background-color: #ffffff;
                 border: 1px solid #d0d5dd;
                 border-radius: 6px;
                 padding: 4px;
-                min-height: 28px;
-            }
-
-            QSlider {
-                padding: 8px;
+                min-height: 24px;
             }
         """)
 
@@ -216,11 +258,9 @@ class RobotGUI(QMainWindow):
         self.setCentralWidget(central_widget)
 
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(15)
-
-        content_layout = self.build_content()
-        main_layout.addLayout(content_layout)
+        main_layout.setContentsMargins(14, 14, 14, 14)
+        main_layout.setSpacing(10)
+        main_layout.addLayout(self.build_content())
 
         central_widget.setLayout(main_layout)
 
@@ -233,48 +273,72 @@ class RobotGUI(QMainWindow):
         self.status_refresh_timer.timeout.connect(self.refresh_motion_status)
         self.status_refresh_timer.start(100)
 
+        self.camera_refresh_timer = QTimer()
+        self.camera_refresh_timer.timeout.connect(self.refresh_camera_feed)
+        self.camera_refresh_timer.start(33)
+
+        self.detection_refresh_timer = QTimer()
+        self.detection_refresh_timer.timeout.connect(self.refresh_detection_display)
+        self.detection_refresh_timer.start(250)
+
     def spin_ros_once(self):
         if rclpy.ok():
             rclpy.spin_once(self.ros_node, timeout_sec=0.0)
 
     def build_content(self):
         content_layout = QHBoxLayout()
-        content_layout.setSpacing(15)
+        content_layout.setSpacing(12)
 
-        left_panel = QVBoxLayout()
-        left_panel.setSpacing(15)
+        left_content = QWidget()
+        left_panel = QVBoxLayout(left_content)
+        left_panel.setSpacing(8)
+        left_panel.setContentsMargins(4, 4, 4, 4)
+
+        left_panel.addWidget(self.build_control_group())
+        left_panel.addWidget(self.build_goal_group())
+        left_panel.addWidget(self.build_place_goal_group())
+        left_panel.addWidget(self.build_gripper_group())
+        left_panel.addWidget(self.build_velocity_group())
+        left_panel.addWidget(self.build_workspace_limits_group())
+        left_panel.addWidget(self.build_status_group())
+        left_panel.addWidget(self.build_motion_group())
+        left_panel.addWidget(self.build_log_group())
+        left_panel.addStretch()
+
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setWidget(left_content)
+        left_scroll.setMinimumWidth(700)
 
         right_panel = QVBoxLayout()
-        right_panel.setSpacing(15)
+        right_panel.setSpacing(8)
 
-        left_panel.addWidget(self.build_control_group(), 0)
-        left_panel.addWidget(self.build_goal_group(), 0)
-        left_panel.addWidget(self.build_gripper_group(), 0)
-        left_panel.addWidget(self.build_status_group(), 0)
-        left_panel.addWidget(self.build_motion_group(), 0)
-        left_panel.addWidget(self.build_log_group(), 1)
-
-        right_panel.addWidget(self.build_camera_group(), 1)
+        right_panel.addWidget(self.build_camera_group(), 2)
+        right_panel.addWidget(self.build_detection_group(), 1)
         right_panel.addWidget(self.build_info_group(), 0)
 
-        content_layout.addLayout(left_panel, 1)
+        content_layout.addWidget(left_scroll, 1)
         content_layout.addLayout(right_panel, 1)
 
         return content_layout
 
+    def make_spinbox(self, minimum, maximum, value, step=0.01):
+        box = QDoubleSpinBox()
+        box.setRange(minimum, maximum)
+        box.setDecimals(3)
+        box.setSingleStep(step)
+        box.setValue(value)
+        return box
+
     def build_control_group(self):
         group = QGroupBox("System Controls")
         layout = QVBoxLayout()
-        layout.setSpacing(12)
 
-        instruction = QLabel(
-            "Use Start/Stop/Reset for high-level execution. "
-            "Use Cartesian Goal and Gripper Control for direct subsystem integration."
-        )
+        instruction = QLabel("Start sends pick/place goals and publishes /gui_command = start.")
         instruction.setWordWrap(True)
         instruction.setObjectName("InfoLabel")
 
-        self.start_button = QPushButton("Start")
+        self.start_button = QPushButton("Start Pick-and-Place")
         self.start_button.setObjectName("StartButton")
 
         self.stop_button = QPushButton("Stop")
@@ -288,90 +352,88 @@ class RobotGUI(QMainWindow):
         self.reset_button.clicked.connect(self.reset_system)
 
         button_layout = QHBoxLayout()
-        button_layout.setSpacing(10)
         button_layout.addWidget(self.start_button)
         button_layout.addWidget(self.stop_button)
         button_layout.addWidget(self.reset_button)
 
         layout.addWidget(instruction)
         layout.addLayout(button_layout)
-        group.setLayout(layout)
 
+        group.setLayout(layout)
         return group
 
     def build_goal_group(self):
-        group = QGroupBox("Cartesian Goal")
+        group = QGroupBox("Pick / Cartesian Goal Pose")
         layout = QGridLayout()
-        layout.setHorizontalSpacing(12)
-        layout.setVerticalSpacing(10)
 
-        self.goal_x_input = QDoubleSpinBox()
-        self.goal_x_input.setRange(-1.0, 1.0)
-        self.goal_x_input.setDecimals(3)
-        self.goal_x_input.setSingleStep(0.01)
-        self.goal_x_input.setValue(-0.300)
+        self.goal_x_input = self.make_spinbox(-1.0, 1.0, -0.300)
+        self.goal_y_input = self.make_spinbox(-1.0, 1.0, -0.200)
+        self.goal_z_input = self.make_spinbox(0.0, 1.5, 0.010)
 
-        self.goal_y_input = QDoubleSpinBox()
-        self.goal_y_input.setRange(-1.0, 1.0)
-        self.goal_y_input.setDecimals(3)
-        self.goal_y_input.setSingleStep(0.01)
-        self.goal_y_input.setValue(-0.200)
+        self.qx_input = self.make_spinbox(-1.0, 1.0, 0.000, 0.001)
+        self.qy_input = self.make_spinbox(-1.0, 1.0, 0.707, 0.001)
+        self.qz_input = self.make_spinbox(-1.0, 1.0, 0.000, 0.001)
+        self.qw_input = self.make_spinbox(-1.0, 1.0, 0.707, 0.001)
 
-        self.goal_z_input = QDoubleSpinBox()
-        self.goal_z_input.setRange(0.0, 1.5)
-        self.goal_z_input.setDecimals(3)
-        self.goal_z_input.setSingleStep(0.01)
-        self.goal_z_input.setValue(0.010)
-
-        self.qx_input = QDoubleSpinBox()
-        self.qx_input.setRange(-1.0, 1.0)
-        self.qx_input.setDecimals(3)
-        self.qx_input.setSingleStep(0.001)
-        self.qx_input.setValue(0.000)
-
-        self.qy_input = QDoubleSpinBox()
-        self.qy_input.setRange(-1.0, 1.0)
-        self.qy_input.setDecimals(3)
-        self.qy_input.setSingleStep(0.001)
-        self.qy_input.setValue(0.707)
-
-        self.qz_input = QDoubleSpinBox()
-        self.qz_input.setRange(-1.0, 1.0)
-        self.qz_input.setDecimals(3)
-        self.qz_input.setSingleStep(0.001)
-        self.qz_input.setValue(0.000)
-
-        self.qw_input = QDoubleSpinBox()
-        self.qw_input.setRange(-1.0, 1.0)
-        self.qw_input.setDecimals(3)
-        self.qw_input.setSingleStep(0.001)
-        self.qw_input.setValue(0.707)
-
-        self.send_pose_button = QPushButton("Send Pose Goal")
-        self.send_pose_button.clicked.connect(self.start_system_with_goal)
+        self.send_pose_button = QPushButton("Send Pick Pose")
+        self.send_pose_button.clicked.connect(self.send_pick_goal_only)
 
         layout.addWidget(QLabel("X:"), 0, 0)
         layout.addWidget(self.goal_x_input, 0, 1)
-
         layout.addWidget(QLabel("Y:"), 0, 2)
         layout.addWidget(self.goal_y_input, 0, 3)
-
         layout.addWidget(QLabel("Z:"), 0, 4)
         layout.addWidget(self.goal_z_input, 0, 5)
 
         layout.addWidget(QLabel("qx:"), 1, 0)
         layout.addWidget(self.qx_input, 1, 1)
-
         layout.addWidget(QLabel("qy:"), 1, 2)
         layout.addWidget(self.qy_input, 1, 3)
-
         layout.addWidget(QLabel("qz:"), 1, 4)
         layout.addWidget(self.qz_input, 1, 5)
 
         layout.addWidget(QLabel("qw:"), 2, 0)
         layout.addWidget(self.qw_input, 2, 1)
 
-        layout.addWidget(self.send_pose_button, 2, 2, 1, 4)
+        layout.addWidget(self.send_pose_button, 3, 0, 1, 6)
+
+        group.setLayout(layout)
+        return group
+
+    def build_place_goal_group(self):
+        group = QGroupBox("Object Placement Position")
+        layout = QGridLayout()
+
+        self.place_x_input = self.make_spinbox(-1.0, 1.0, -0.100)
+        self.place_y_input = self.make_spinbox(-1.0, 1.0, 0.250)
+        self.place_z_input = self.make_spinbox(0.0, 1.5, 0.010)
+
+        self.place_qx_input = self.make_spinbox(-1.0, 1.0, 0.000, 0.001)
+        self.place_qy_input = self.make_spinbox(-1.0, 1.0, 0.707, 0.001)
+        self.place_qz_input = self.make_spinbox(-1.0, 1.0, 0.000, 0.001)
+        self.place_qw_input = self.make_spinbox(-1.0, 1.0, 0.707, 0.001)
+
+        self.send_place_button = QPushButton("Send Place Pose")
+        self.send_place_button.clicked.connect(self.send_place_goal_only)
+
+        layout.addWidget(QLabel("X:"), 0, 0)
+        layout.addWidget(self.place_x_input, 0, 1)
+        layout.addWidget(QLabel("Y:"), 0, 2)
+        layout.addWidget(self.place_y_input, 0, 3)
+        layout.addWidget(QLabel("Z:"), 0, 4)
+        layout.addWidget(self.place_z_input, 0, 5)
+
+        layout.addWidget(QLabel("qx:"), 1, 0)
+        layout.addWidget(self.place_qx_input, 1, 1)
+        layout.addWidget(QLabel("qy:"), 1, 2)
+        layout.addWidget(self.place_qy_input, 1, 3)
+        layout.addWidget(QLabel("qz:"), 1, 4)
+        layout.addWidget(self.place_qz_input, 1, 5)
+
+        layout.addWidget(QLabel("qw:"), 2, 0)
+        layout.addWidget(self.place_qw_input, 2, 1)
+
+        layout.addWidget(self.send_place_button, 3, 0, 1, 6)
 
         group.setLayout(layout)
         return group
@@ -379,22 +441,22 @@ class RobotGUI(QMainWindow):
     def build_gripper_group(self):
         group = QGroupBox("Gripper Control")
         layout = QVBoxLayout()
-        layout.setSpacing(8)
 
-        self.gripper_width_label = QLabel("Width: 0.020 m")
+        self.gripper_width_label = QLabel("Width: 0.050 m")
         self.gripper_width_label.setObjectName("InfoLabel")
 
         self.gripper_slider = QSlider(Qt.Horizontal)
         self.gripper_slider.setMinimum(0)
         self.gripper_slider.setMaximum(110)
-        self.gripper_slider.setValue(20)
+        self.gripper_slider.setValue(50)
         self.gripper_slider.valueChanged.connect(self.update_gripper_label)
 
         self.send_gripper_button = QPushButton("Send Gripper Command")
         self.send_gripper_button.clicked.connect(self.send_gripper_command)
 
-        note_label = QLabel("Range: 0.000 m to 0.110 m")
+        note_label = QLabel("Publishes Float64MultiArray to /finger_width_controller/commands")
         note_label.setObjectName("InfoLabel")
+        note_label.setWordWrap(True)
 
         layout.addWidget(self.gripper_width_label)
         layout.addWidget(self.gripper_slider)
@@ -404,11 +466,73 @@ class RobotGUI(QMainWindow):
         group.setLayout(layout)
         return group
 
+    def build_velocity_group(self):
+        group = QGroupBox("Velocity Control")
+        layout = QVBoxLayout()
+
+        self.velocity_label = QLabel("Velocity Scale: 0.50")
+        self.velocity_label.setObjectName("InfoLabel")
+
+        self.velocity_slider = QSlider(Qt.Horizontal)
+        self.velocity_slider.setMinimum(10)
+        self.velocity_slider.setMaximum(100)
+        self.velocity_slider.setValue(50)
+        self.velocity_slider.valueChanged.connect(self.update_velocity_label)
+
+        self.send_velocity_button = QPushButton("Send Velocity Scale")
+        self.send_velocity_button.clicked.connect(self.send_velocity_scale)
+
+        note_label = QLabel("Range: 0.10 to 1.00")
+        note_label.setObjectName("InfoLabel")
+
+        layout.addWidget(self.velocity_label)
+        layout.addWidget(self.velocity_slider)
+        layout.addWidget(note_label)
+        layout.addWidget(self.send_velocity_button)
+
+        group.setLayout(layout)
+        return group
+
+    def build_workspace_limits_group(self):
+        group = QGroupBox("Safe Workspace Limits")
+        layout = QGridLayout()
+
+        self.x_min_input = self.make_spinbox(-1.0, 1.0, -0.600)
+        self.x_max_input = self.make_spinbox(-1.0, 1.0, 0.600)
+
+        self.y_min_input = self.make_spinbox(-1.0, 1.0, -0.600)
+        self.y_max_input = self.make_spinbox(-1.0, 1.0, 0.600)
+
+        self.z_min_input = self.make_spinbox(0.0, 1.5, 0.000)
+        self.z_max_input = self.make_spinbox(0.0, 1.5, 0.500)
+
+        self.workspace_status_label = QLabel("Workspace validation active.")
+        self.workspace_status_label.setObjectName("InfoLabel")
+        self.workspace_status_label.setWordWrap(True)
+
+        layout.addWidget(QLabel("X min:"), 0, 0)
+        layout.addWidget(self.x_min_input, 0, 1)
+        layout.addWidget(QLabel("X max:"), 0, 2)
+        layout.addWidget(self.x_max_input, 0, 3)
+
+        layout.addWidget(QLabel("Y min:"), 1, 0)
+        layout.addWidget(self.y_min_input, 1, 1)
+        layout.addWidget(QLabel("Y max:"), 1, 2)
+        layout.addWidget(self.y_max_input, 1, 3)
+
+        layout.addWidget(QLabel("Z min:"), 2, 0)
+        layout.addWidget(self.z_min_input, 2, 1)
+        layout.addWidget(QLabel("Z max:"), 2, 2)
+        layout.addWidget(self.z_max_input, 2, 3)
+
+        layout.addWidget(self.workspace_status_label, 3, 0, 1, 4)
+
+        group.setLayout(layout)
+        return group
+
     def build_status_group(self):
         group = QGroupBox("System Status")
         layout = QGridLayout()
-        layout.setHorizontalSpacing(15)
-        layout.setVerticalSpacing(10)
 
         state_label = QLabel("Current State:")
         state_label.setObjectName("StateLabel")
@@ -431,7 +555,6 @@ class RobotGUI(QMainWindow):
     def build_motion_group(self):
         group = QGroupBox("Motion Planning Feedback")
         layout = QVBoxLayout()
-        layout.setSpacing(8)
 
         self.motion_status_label = QLabel("Motion Status: idle")
         self.motion_status_label.setObjectName("InfoLabel")
@@ -451,68 +574,104 @@ class RobotGUI(QMainWindow):
 
         self.log_box = QTextEdit()
         self.log_box.setReadOnly(True)
-        self.log_box.setPlaceholderText("System logs will appear here...")
+        self.log_box.setMinimumHeight(120)
 
         layout.addWidget(self.log_box)
         group.setLayout(layout)
 
         self.append_log("GUI initialised successfully.")
-        self.append_log("ROS2 node initialised.")
-        self.append_log("Waiting for motion planner feedback on /motion_status.")
+        self.append_log("Subscribed to camera and detection topics.")
+        self.append_log("Gripper publishes to /finger_width_controller/commands.")
 
         return group
 
     def build_camera_group(self):
-        group = QGroupBox("Camera Feed")
+        group = QGroupBox("Live Camera Feed")
         layout = QVBoxLayout()
 
         camera_frame = QFrame()
         camera_frame.setObjectName("CameraFrame")
-        camera_frame.setMinimumHeight(320)
+        camera_frame.setMinimumHeight(300)
         camera_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         frame_layout = QVBoxLayout()
         frame_layout.setAlignment(Qt.AlignCenter)
 
-        camera_placeholder = QLabel(
-            "Live Camera Feed Placeholder\n\n"
-            "(Connect perception image topic here later)"
+        self.camera_label = QLabel(
+            "Waiting for camera feed...\n\n"
+            "RealSense: /camera/camera/color/image_raw\n"
+            "WSL test: /image"
         )
-        camera_placeholder.setObjectName("CameraPlaceholder")
-        camera_placeholder.setAlignment(Qt.AlignCenter)
+        self.camera_label.setObjectName("CameraPlaceholder")
+        self.camera_label.setAlignment(Qt.AlignCenter)
+        self.camera_label.setMinimumSize(480, 300)
 
-        frame_layout.addWidget(camera_placeholder)
+        self.camera_topic_label = QLabel(f"Topic: {self.ros_node.camera_topic}")
+        self.camera_topic_label.setObjectName("InfoLabel")
+        self.camera_topic_label.setAlignment(Qt.AlignCenter)
+
+        frame_layout.addWidget(self.camera_label)
         camera_frame.setLayout(frame_layout)
 
         layout.addWidget(camera_frame)
-        group.setLayout(layout)
+        layout.addWidget(self.camera_topic_label)
 
+        group.setLayout(layout)
+        return group
+
+    def build_detection_group(self):
+        group = QGroupBox("Perception Detection Result")
+        layout = QVBoxLayout()
+
+        self.detection_count_label = QLabel("Detected Objects: 0")
+        self.detection_count_label.setObjectName("InfoLabel")
+
+        self.detection_selector = QComboBox()
+        self.detection_selector.currentIndexChanged.connect(self.update_selected_detection_display)
+
+        self.selected_detection_label = QLabel("Selected Detection:\nNo object detected yet.")
+        self.selected_detection_label.setObjectName("InfoLabel")
+        self.selected_detection_label.setWordWrap(True)
+
+        self.use_detection_button = QPushButton("Use Selected Detection as Pick Pose")
+        self.use_detection_button.clicked.connect(self.use_selected_detection_as_pick_pose)
+
+        self.detection_note_label = QLabel("Uses tag_x_m, tag_y_m, tag_z_m from /detection_result.")
+        self.detection_note_label.setObjectName("InfoLabel")
+        self.detection_note_label.setWordWrap(True)
+
+        layout.addWidget(self.detection_count_label)
+        layout.addWidget(self.detection_selector)
+        layout.addWidget(self.selected_detection_label)
+        layout.addWidget(self.use_detection_button)
+        layout.addWidget(self.detection_note_label)
+
+        group.setLayout(layout)
         return group
 
     def build_info_group(self):
         group = QGroupBox("Subsystem Information")
         layout = QVBoxLayout()
-        layout.setSpacing(8)
 
-        self.mode_label = QLabel("Mode: Manual GUI Control")
-        self.mode_label.setObjectName("InfoLabel")
-
+        self.mode_label = QLabel("Mode: Manual GUI Control + Perception Monitoring")
         self.connection_label = QLabel("ROS2 Connection: Active")
-        self.connection_label.setObjectName("InfoLabel")
-
         self.last_command_label = QLabel("Last Command: None")
-        self.last_command_label.setObjectName("InfoLabel")
 
         self.integration_label = QLabel(
-            "Integration: /ur3_goal_pose, /gui_command, /gripper_width, /motion_status"
+            "Topics: /ur3_goal_pose, /place_goal_pose, "
+            "/finger_width_controller/commands, /velocity_scale, "
+            "/gui_command, /motion_status, /detection_result, camera image topic"
         )
-        self.integration_label.setObjectName("InfoLabel")
         self.integration_label.setWordWrap(True)
 
-        layout.addWidget(self.mode_label)
-        layout.addWidget(self.connection_label)
-        layout.addWidget(self.last_command_label)
-        layout.addWidget(self.integration_label)
+        for label in [
+            self.mode_label,
+            self.connection_label,
+            self.last_command_label,
+            self.integration_label,
+        ]:
+            label.setObjectName("InfoLabel")
+            layout.addWidget(label)
 
         group.setLayout(layout)
         return group
@@ -526,60 +685,126 @@ class RobotGUI(QMainWindow):
         self.state_value.setText(state)
         self.status_message.setText(message)
 
-        if state == "Executing":
-            bg = "#e8f5e9"
-            color = "#2e7d32"
-        elif state == "Stopped":
-            bg = "#fdecea"
-            color = "#c62828"
-        elif state == "Completed":
-            bg = "#e3f2fd"
-            color = "#1565c0"
-        else:
-            bg = "#e9ecef"
-            color = "#212529"
+    def normalize_pose_quaternion(self, pose):
+        qx = pose.orientation.x
+        qy = pose.orientation.y
+        qz = pose.orientation.z
+        qw = pose.orientation.w
 
-        self.state_value.setStyleSheet(f"""
-            font-size: 18px;
-            font-weight: bold;
-            padding: 8px 14px;
-            border-radius: 8px;
-            background-color: {bg};
-            color: {color};
-        """)
+        norm = (qx*qx + qy*qy + qz*qz + qw*qw) ** 0.5
+
+        if norm == 0:
+            pose.orientation.x = 0.0
+            pose.orientation.y = 0.707
+            pose.orientation.z = 0.0
+            pose.orientation.w = 0.707
+            return pose
+
+        pose.orientation.x = qx / norm
+        pose.orientation.y = qy / norm
+        pose.orientation.z = qz / norm
+        pose.orientation.w = qw / norm
+
+        return pose
+
+    def is_pose_within_workspace(self, x, y, z):
+        x_min = self.x_min_input.value()
+        x_max = self.x_max_input.value()
+        y_min = self.y_min_input.value()
+        y_max = self.y_max_input.value()
+        z_min = self.z_min_input.value()
+        z_max = self.z_max_input.value()
+
+        if x_min > x_max or y_min > y_max or z_min > z_max:
+            self.workspace_status_label.setText("Invalid workspace limits.")
+            return False
+
+        within_limits = (
+            x_min <= x <= x_max and
+            y_min <= y <= y_max and
+            z_min <= z <= z_max
+        )
+
+        if within_limits:
+            self.workspace_status_label.setText("Goal is inside safe workspace limits.")
+            return True
+
+        self.workspace_status_label.setText("Goal rejected: outside safe workspace limits.")
+        return False
+
+    def create_pick_pose_from_inputs(self):
+        pose = Pose()
+
+        pose.position.x = self.goal_x_input.value()
+        pose.position.y = self.goal_y_input.value()
+        pose.position.z = self.goal_z_input.value()
+
+        pose.orientation.x = self.qx_input.value()
+        pose.orientation.y = self.qy_input.value()
+        pose.orientation.z = self.qz_input.value()
+        pose.orientation.w = self.qw_input.value()
+
+        return self.normalize_pose_quaternion(pose)
+
+    def create_place_pose_from_inputs(self):
+        pose = Pose()
+
+        pose.position.x = self.place_x_input.value()
+        pose.position.y = self.place_y_input.value()
+        pose.position.z = self.place_z_input.value()
+
+        pose.orientation.x = self.place_qx_input.value()
+        pose.orientation.y = self.place_qy_input.value()
+        pose.orientation.z = self.place_qz_input.value()
+        pose.orientation.w = self.place_qw_input.value()
+
+        return self.normalize_pose_quaternion(pose)
+
+    def send_pick_goal_only(self):
+        pose = self.create_pick_pose_from_inputs()
+
+        if not self.is_pose_within_workspace(pose.position.x, pose.position.y, pose.position.z):
+            self.append_log("Pick pose rejected because it is outside workspace limits.")
+            return
+
+        self.ros_node.publish_goal(pose)
+        self.last_command_label.setText("Last Command: Pick pose sent")
+        self.append_log(
+            f"Pick pose sent: x={pose.position.x:.3f}, y={pose.position.y:.3f}, z={pose.position.z:.3f}"
+        )
+
+    def send_place_goal_only(self):
+        pose = self.create_place_pose_from_inputs()
+
+        if not self.is_pose_within_workspace(pose.position.x, pose.position.y, pose.position.z):
+            self.append_log("Place pose rejected because it is outside workspace limits.")
+            return
+
+        self.ros_node.publish_place_goal(pose)
+        self.last_command_label.setText("Last Command: Place pose sent")
+        self.append_log(
+            f"Place pose sent: x={pose.position.x:.3f}, y={pose.position.y:.3f}, z={pose.position.z:.3f}"
+        )
 
     def start_system_with_goal(self):
-        goal_pose = Pose()
+        pick_pose = self.create_pick_pose_from_inputs()
+        place_pose = self.create_place_pose_from_inputs()
 
-        goal_pose.position.x = self.goal_x_input.value()
-        goal_pose.position.y = self.goal_y_input.value()
-        goal_pose.position.z = self.goal_z_input.value()
+        if not self.is_pose_within_workspace(pick_pose.position.x, pick_pose.position.y, pick_pose.position.z):
+            self.append_log("Start rejected: pick pose outside workspace limits.")
+            return
 
-        goal_pose.orientation.x = self.qx_input.value()
-        goal_pose.orientation.y = self.qy_input.value()
-        goal_pose.orientation.z = self.qz_input.value()
-        goal_pose.orientation.w = self.qw_input.value()
+        if not self.is_pose_within_workspace(place_pose.position.x, place_pose.position.y, place_pose.position.z):
+            self.append_log("Start rejected: place pose outside workspace limits.")
+            return
 
-        self.ros_node.publish_goal(goal_pose)
+        self.ros_node.publish_goal(pick_pose)
+        self.ros_node.publish_place_goal(place_pose)
         self.ros_node.publish_command("start")
 
-        self.last_command_label.setText("Last Command: Pose goal sent")
-
-        self.append_log(
-            f"Pose sent: "
-            f"({goal_pose.position.x:.3f}, "
-            f"{goal_pose.position.y:.3f}, "
-            f"{goal_pose.position.z:.3f}) / "
-            f"({goal_pose.orientation.x:.3f}, "
-            f"{goal_pose.orientation.y:.3f}, "
-            f"{goal_pose.orientation.z:.3f}, "
-            f"{goal_pose.orientation.w:.3f})"
-        )
-
-        self.update_state_display(
-            "Executing",
-            "Cartesian pose goal sent to motion planning subsystem."
-        )
+        self.last_command_label.setText("Last Command: Start with pick/place goals")
+        self.append_log("Start pressed. Pick and place goals sent.")
+        self.update_state_display("Executing", "Pick and place goals sent.")
 
     def update_gripper_label(self):
         width = self.gripper_slider.value() / 1000.0
@@ -594,22 +819,170 @@ class RobotGUI(QMainWindow):
         self.append_log(f"Published gripper width: {width:.3f} m")
         self.last_command_label.setText("Last Command: Gripper command sent")
 
+    def update_velocity_label(self):
+        velocity_scale = self.velocity_slider.value() / 100.0
+        self.velocity_label.setText(f"Velocity Scale: {velocity_scale:.2f}")
+
+    def send_velocity_scale(self):
+        velocity_scale = self.velocity_slider.value() / 100.0
+
+        self.ros_node.publish_velocity_scale(velocity_scale)
+        self.append_log(f"Published velocity scale: {velocity_scale:.2f}")
+        self.last_command_label.setText("Last Command: Velocity scale sent")
+
     def stop_system(self):
         self.ros_node.publish_command("stop")
         self.last_command_label.setText("Last Command: Stop")
-        self.append_log("Stop button pressed. Published command: stop")
-
-        self.update_state_display(
-            "Stopped",
-            "Stop requested. Motion planner should handle cancellation if implemented."
-        )
+        self.append_log("Stop command sent.")
+        self.update_state_display("Stopped", "Stop requested.")
 
     def reset_system(self):
         self.ros_node.publish_command("reset")
         self.last_command_label.setText("Last Command: Reset")
-        self.append_log("Reset button pressed. Published command: reset")
-
+        self.append_log("Reset command sent.")
         self.update_state_display("Idle", "System reset to idle state.")
+
+    def refresh_camera_feed(self):
+        frame = self.ros_node.latest_camera_frame
+
+        if self.ros_node.latest_camera_error:
+            self.camera_label.setText("Camera feed error:\n" + self.ros_node.latest_camera_error)
+            return
+
+        if frame is None:
+            return
+
+        try:
+            rgb_frame = frame[:, :, ::-1].copy()
+            height, width, channels = rgb_frame.shape
+            bytes_per_line = channels * width
+
+            qt_image = QImage(
+                rgb_frame.data,
+                width,
+                height,
+                bytes_per_line,
+                QImage.Format_RGB888
+            )
+
+            pixmap = QPixmap.fromImage(qt_image)
+            scaled_pixmap = pixmap.scaled(
+                self.camera_label.width(),
+                self.camera_label.height(),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
+
+            self.camera_label.setPixmap(scaled_pixmap)
+            self.camera_topic_label.setText(
+                f"Topic: {self.ros_node.camera_topic} | Resolution: {width} x {height}"
+            )
+
+        except Exception as error:
+            self.camera_label.setText(f"Camera display error:\n{error}")
+
+    def refresh_detection_display(self):
+        if self.ros_node.latest_detection_error:
+            self.detection_count_label.setText("Detected Objects: error")
+            self.selected_detection_label.setText(
+                "Detection parse error:\n" + self.ros_node.latest_detection_error
+            )
+            return
+
+        detections = self.ros_node.latest_detection_result
+        self.detection_count_label.setText(f"Detected Objects: {len(detections)}")
+
+        current_index = self.detection_selector.currentIndex()
+
+        self.detection_selector.blockSignals(True)
+        self.detection_selector.clear()
+
+        for i, detection in enumerate(detections):
+            colour = detection.get("colour", "Unknown")
+            shape = detection.get("shape", "Unknown")
+            self.detection_selector.addItem(f"{i + 1}: {colour} {shape}")
+
+        self.detection_selector.blockSignals(False)
+
+        if len(detections) == 0:
+            self.selected_detection_label.setText("Selected Detection:\nNo valid object detected.")
+            return
+
+        if current_index < 0 or current_index >= len(detections):
+            current_index = 0
+
+        self.detection_selector.setCurrentIndex(current_index)
+        self.update_selected_detection_display()
+
+    def get_selected_detection(self):
+        detections = self.ros_node.latest_detection_result
+
+        if not detections:
+            return None
+
+        index = self.detection_selector.currentIndex()
+
+        if index < 0 or index >= len(detections):
+            return detections[0]
+
+        return detections[index]
+
+    def update_selected_detection_display(self):
+        detection = self.get_selected_detection()
+
+        if detection is None:
+            self.selected_detection_label.setText("Selected Detection:\nNo object detected yet.")
+            return
+
+        colour = detection.get("colour", "Unknown")
+        shape = detection.get("shape", "Unknown")
+        centroid_x = detection.get("centroid_x", "N/A")
+        centroid_y = detection.get("centroid_y", "N/A")
+        depth_m = detection.get("depth_m", None)
+
+        tag_x = detection.get("tag_x_m", None)
+        tag_y = detection.get("tag_y_m", None)
+        tag_z = detection.get("tag_z_m", None)
+
+        text = f"Selected Detection:\nColour: {colour}\nShape: {shape}\nPixel: ({centroid_x}, {centroid_y})"
+
+        if depth_m is not None:
+            text += f"\nDepth: {depth_m:.3f} m"
+
+        if tag_x is not None and tag_y is not None and tag_z is not None:
+            text += f"\nAprilTag frame: x={tag_x:.3f}, y={tag_y:.3f}, z={tag_z:.3f} m"
+        else:
+            text += "\nAprilTag frame: not available yet"
+
+        self.selected_detection_label.setText(text)
+
+    def use_selected_detection_as_pick_pose(self):
+        detection = self.get_selected_detection()
+
+        if detection is None:
+            self.append_log("No detection available.")
+            return
+
+        tag_x = detection.get("tag_x_m", None)
+        tag_y = detection.get("tag_y_m", None)
+        tag_z = detection.get("tag_z_m", None)
+
+        if tag_x is None or tag_y is None or tag_z is None:
+            self.append_log("Detection missing tag-frame coordinates.")
+            self.update_state_display("Idle", "Detection missing AprilTag-frame coordinates.")
+            return
+
+        self.goal_x_input.setValue(float(tag_x))
+        self.goal_y_input.setValue(float(tag_y))
+        self.goal_z_input.setValue(float(tag_z))
+
+        colour = detection.get("colour", "Unknown")
+        shape = detection.get("shape", "Unknown")
+
+        self.append_log(
+            f"Copied detection to pick pose: {colour} {shape}, x={tag_x:.3f}, y={tag_y:.3f}, z={tag_z:.3f}"
+        )
+        self.last_command_label.setText("Last Command: Detection copied to pick pose")
 
     def refresh_motion_status(self):
         status = self.ros_node.latest_motion_status.strip().lower()
@@ -623,51 +996,21 @@ class RobotGUI(QMainWindow):
         if status == "idle":
             self.motion_stage_label.setText("Stage: Waiting for command")
             self.update_state_display("Idle", "Motion planner is idle.")
-
         elif status == "planning":
             self.motion_stage_label.setText("Stage: Generating trajectory")
-            self.update_state_display("Executing", "Motion planner is generating a trajectory.")
-
-        elif status == "moving":
+            self.update_state_display("Executing", "Motion planner is generating trajectory.")
+        elif status in ["moving", "executing"]:
             self.motion_stage_label.setText("Stage: Executing trajectory")
-            self.update_state_display("Executing", "Robot is moving to the target pose.")
-
-        elif status == "executing":
-            self.motion_stage_label.setText("Stage: Executing trajectory")
-            self.update_state_display("Executing", "Robot is executing the planned trajectory.")
-
-        elif status == "moving_to_pick":
-            self.motion_stage_label.setText("Stage: Moving to pick position")
-            self.update_state_display("Executing", "Robot is moving to the pick position.")
-
-        elif status == "grasping":
-            self.motion_stage_label.setText("Stage: Grasping object")
-            self.update_state_display("Executing", "Robot is attempting to grasp the object.")
-
-        elif status == "moving_to_place":
-            self.motion_stage_label.setText("Stage: Moving to place position")
-            self.update_state_display("Executing", "Robot is moving to the place position.")
-
-        elif status == "returning_home":
-            self.motion_stage_label.setText("Stage: Returning home")
-            self.update_state_display("Executing", "Robot is returning to the home pose.")
-
+            self.update_state_display("Executing", "Robot is moving.")
         elif status == "completed":
             self.motion_stage_label.setText("Stage: Task completed")
-            self.update_state_display("Completed", "Motion planner completed the task successfully.")
-
-        elif status == "failed":
-            self.motion_stage_label.setText("Stage: Task failed")
-            self.update_state_display("Stopped", "Motion planner reported task failure.")
-
-        elif status == "stopped":
-            self.motion_stage_label.setText("Stage: Execution stopped")
-            self.update_state_display("Stopped", "Motion planner stopped execution.")
-
+            self.update_state_display("Completed", "Motion completed successfully.")
+        elif status in ["failed", "stopped"]:
+            self.motion_stage_label.setText("Stage: Task stopped/failed")
+            self.update_state_display("Stopped", "Motion stopped or failed.")
         elif status == "busy":
             self.motion_stage_label.setText("Stage: Busy")
-            self.update_state_display("Executing", "Motion planner is busy with another request.")
-
+            self.update_state_display("Executing", "Motion planner is busy.")
         else:
             self.motion_stage_label.setText(f"Stage: {status}")
             self.update_state_display("Executing", f"Received motion status: {status}")
