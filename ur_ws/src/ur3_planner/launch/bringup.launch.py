@@ -33,6 +33,7 @@ def generate_launch_description():
             ])
         ]),
         launch_arguments={
+            'name': 'ur',
             'robot_ip': robot_ip,
             'calibration_file': calibration_file,
             'ur_type': ur_type,
@@ -57,7 +58,7 @@ def generate_launch_description():
         ]),
         launch_arguments={
             'ur_type': ur_type,
-            'launch_rviz': 'true',
+            'launch_rviz': 'true', # Default: true
         }.items()
     )
 
@@ -88,15 +89,22 @@ def generate_launch_description():
         ])],
         output='screen'
     )
-
+    
+    # 6. Spawn gripper controllers
     spawn_gripper_controller = Node(
         package='controller_manager',
         executable='spawner',
         arguments=['finger_width_controller'],
         output='screen'
     )
+    spawn_gripper_traj_controller = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['finger_width_trajectory_controller'],
+        output='screen'
+    )
 
-    # 6. Gripper driver
+    # 7. Gripper driver
     gripper_driver = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             PathJoinSubstitution([
@@ -114,17 +122,10 @@ def generate_launch_description():
         }.items()
     )
 
-    # 7. Joint state bridge (to bridge /onrobot/joint_states to /joint_states for MoveIt)
-    joint_state_bridge = Node(
-        package='topic_tools',
-        executable='relay',
-        arguments=['/onrobot/joint_states', '/joint_states'],
-        output='screen'
-    )
-    
     return LaunchDescription([
         ur_driver,
         spawn_gripper_controller,
+        spawn_gripper_traj_controller,
         moveit,
         listener_node,
         activate_controller,

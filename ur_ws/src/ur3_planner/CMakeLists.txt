@@ -18,6 +18,12 @@ find_package(geometry_msgs REQUIRED)
 find_package(controller_manager_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 
+find_package(moveit_msgs REQUIRED)
+find_package(moveit_task_constructor_core REQUIRED)
+find_package(moveit_task_constructor_msgs REQUIRED)
+find_package(moveit_task_constructor_visualization REQUIRED)
+find_package(shape_msgs REQUIRED)
+
 add_executable(ur3_planner src/ur3_planner.cpp)
 target_include_directories(ur3_planner PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -31,10 +37,10 @@ ament_target_dependencies(
   geometry_msgs
   controller_manager_msgs
 )
-
 install(TARGETS ur3_planner
   DESTINATION lib/${PROJECT_NAME}
 )
+
 
 add_executable(ur3_planner_listener src/ur3_planner_listener.cpp)
 target_include_directories(ur3_planner_listener PRIVATE
@@ -50,7 +56,6 @@ ament_target_dependencies(
   controller_manager_msgs
   std_msgs
 )
-
 install(TARGETS ur3_planner_listener
   DESTINATION lib/${PROJECT_NAME}
 )

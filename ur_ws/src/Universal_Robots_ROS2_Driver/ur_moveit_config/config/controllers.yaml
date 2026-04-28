@@ -1,6 +1,8 @@
 controller_names:
   - scaled_joint_trajectory_controller
   - joint_trajectory_controller
+  - finger_width_trajectory_controller
+  - finger_width_controller
 
 
 scaled_joint_trajectory_controller:
@@ -27,3 +29,19 @@ joint_trajectory_controller:
     - wrist_1_joint
     - wrist_2_joint
     - wrist_3_joint
+
+
+finger_width_trajectory_controller:
+  action_ns: follow_joint_trajectory
+  type: FollowJointTrajectory
+  default: true
+  joints:
+    - finger_width
+
+
+finger_width_controller:
+  action_ns: follow_joint_trajectory
+  type: FollowJointTrajectory
+  default: false
+  joints:
+    - finger_width

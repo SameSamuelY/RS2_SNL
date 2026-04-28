@@ -12,7 +12,8 @@ class GoalPublisher(Node):
     def __init__(self):
         super().__init__('ur3_goal_gui')
         self.pose_pub = self.create_publisher(Pose, '/ur3_goal_pose', 10)
-        self.gripper_pub = self.create_publisher(Float64MultiArray, '/finger_width_controller/commands', 10)
+        # self.gripper_pub = self.create_publisher(Float64MultiArray, '/finger_width_controller/commands', 10)
+        self.gripper_pub = self.create_publisher(Float64MultiArray, '/ur3_gripper_cmd', 10)
         self.joint_sub = self.create_subscription(JointState, '/joint_states', self.joint_callback, 10)
         self.current_gripper_width = 0.0  # meters
         self.get_logger().info("GUI publisher node started")

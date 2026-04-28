@@ -14,8 +14,21 @@ cd ~/git/RS2_SNL/ur_ws/
 colcon build --packages-select ur3_planner --symlink-install
 source install/setup.bash
 
+# colcon build (gui)
+cd ~/git/RS2_SNL/src/
+colcon build --packages-select gui_control --symlink-install
+source install/setup.bash
+
+# colcon build (mtc)
+cd ~/git/RS2_SNL/ur_ws/
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --packages-select ur3_mtc --symlink-install
+source install/setup.bash
+
 # Source
 source ~/git/RS2_SNL/ur_ws/install/setup.bash
+source ~/git/RS2_SNL/ur_ws/src/moveit2_tutorials_ur_onrobot/ur_onrobot_mtc/install/setup.bash
+source ~/git/RS2_SNL/src/install/setup.bash
 
 # Docker 
 http://localhost:6080/vnc.html
@@ -41,6 +54,7 @@ ros2 launch ur3_planner bringup.launch.py \
     trajectory_acceleration_scaling:=0.1 \
     connection_type:=serial
 
+
 # Terminal 2-4 bringup.launch (Real Default)
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.0.195 \
@@ -50,14 +64,20 @@ ros2 launch ur3_planner bringup.launch.py \
     trajectory_acceleration_scaling:=0.1 \
     connection_type:=serial
 
+
 # Terminal 2-4 bringup.launch (Sim star moveit config)
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \
     planner_id:=RRTstarkConfigDefault \
     ignore_if_busy:=false
 
-# gripper driver
 
+# gripper driver
+ros2 run controller_manager spawner finger_width_trajectory_controller
+
+ros2 topic pub --once /ur3_gripper_cmd std_msgs/msg/Float64MultiArray "{data: [0.05]}"
+
+ros2 run ur3_mtc mtc_node
 
 
 # Terminal 2 Driver (Real Connection)
@@ -171,6 +191,10 @@ sudo apt install libnet1-dev
 
 # Installs
 sudo apt install ros-humble-topic-tools
+
+# Installs mtc
+cd ~/git/RS2_SNL/ur_ws/src/moveit2_tutorials_ur_onrobot/ur_onrobot_mtc
+rosdep install --from-paths src --ignore-src -r -y
 
 # ping
 ping 192.168.56.101
