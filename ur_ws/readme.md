@@ -84,7 +84,7 @@ ros2 launch ur3_planner bringup.launch.py \
 ```
 
 
-The launch file (bringup) starts:
+**The launch file (bringup) starts:**
 - UR driver
 - MoveIt & RViz
 - Planner listener node (ur3_planner_listener)
@@ -94,12 +94,12 @@ The launch file (bringup) starts:
 
 # Controlling the Robot:
 
-MoveIt RViz Interface:
+**MoveIt RViz Interface:**
 - Interactive markers – drag to set goal pose, click Plan & Execute
 - Joints tab – manually set joint angles
 - MotionPlanning panel – plan, execute, add collision objects
 
-Using the Planner Listener Node:
+**Planner Listener Node:**
 The node subscribes to ***/ur3_goal_pose (geometry_msgs/Pose)*** and executes Cartesian arm motions.
 
 Publish a pose target:
@@ -114,7 +114,7 @@ The node will:
 - Plan and execute the motion
 - Publish status to /motion_status
 
-Gripper Control:
+**Gripper Control:**
 The listener node also subscribes to ***/ur3_gripper_cmd (std_msgs/Float64MultiArray)***. Send a width in meters (0.0 = closed, 0.11 = fully open).
 ```bash
 ros2 topic pub --once /ur3_gripper_cmd std_msgs/msg/Float64MultiArray "{data: [0.11]}" # fully open
@@ -136,19 +136,41 @@ The arm will move to a predefined pose configuration and the gripper will open. 
 
 # Troubleshooting:
 
-Controller activation warnings:
-If you see "Controller with name 'scaled_joint_trajectory_controller' is not active", the listener node will automatically activate it. Wait a few seconds after launch.
+**External Control**
+- Run Program on the dock/real hardware
+```bash
+ros2 topic echo /io_and_status_controller/robot_program_running --once
+ros2 topic echo /io_and_status_controller/robot_mode --once
+```
 
-Gripper does not move:
+**Controller activation warnings:**
+```bash
+ros2 control list_controllers
+```
+- If you see "Controller with name 'scaled_joint_trajectory_controller' is not active", the listener node will automatically activate it. Wait a few seconds after launch.
+
+
+**Gripper does not move:**
 - Ensure finger_width_trajectory_controller is loaded and active:
-  ros2 control list_controllers | grep finger
+```bash
+ros2 control list_controllers
+```
 - If inactive, the listener node will activate it automatically on first gripper command.
 
-MoveIt planning fails (Invalid start state):
+**MoveIt planning fails (Invalid start state):**
 - Check that the robot model in RViz is green (not red). If red, there is a collision (e.g., closed gripper colliding with ground). Publish an open command first.
-- Ensure use_fake_hardware:=true if URSim is not running.
+- Ensure *use_fake_hardware:=true* if URSim is not running.
 
-RViz freezes or grey cursor:
-- Kill all RViz processes: killall rviz2
-- Delete corrupt config: rm ~/.rviz/default.rviz
-- Restart the system.
+**RViz freezes or grey cursor:**
+- Kill all RViz processes: 
+```bash
+killall rviz2
+```
+- Delete corrupt config
+
+**State tolerances failed for joint 5:**
+```bash
+Error: State tolerances failed for joint 5: Position Error: -6.283138, Position Tolerance: 0.200000
+```
+- Cause: the last joint (wrist_3) is a continuous joint (no limits), and so the UR sometimes send -360 instead of 0 when it starts.
+- Fix: Use the Teach Pendant to set that joint to be 0 (in Move) before running External Control often fixes it
