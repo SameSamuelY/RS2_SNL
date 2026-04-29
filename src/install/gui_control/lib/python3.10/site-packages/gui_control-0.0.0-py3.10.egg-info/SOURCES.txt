@@ -10,6 +10,7 @@ setup.py
 ../build/gui_control/gui_control.egg-info/zip-safe
 gui_control/__init__.py
 gui_control/gui_node.py
+gui_control/voice_command_node.py
 resource/gui_control
 test/test_copyright.py
 test/test_flake8.py
