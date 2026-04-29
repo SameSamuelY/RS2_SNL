@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(moveit_task_constructor_core REQUIRED)
 find_package(rclcpp REQUIRED)
 
+
 add_executable(mtc_node src/mtc_node.cpp)
 target_include_directories(mtc_node PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -20,26 +21,25 @@ ament_target_dependencies(mtc_node
   rclcpp
 )
 install(TARGETS mtc_node
-  DESTINATION lib/${PROJECT_NAME})
-
-
-
-add_executable(ur3_mtc_plan_only src/ur3_mtc_plan_only.cpp)
-target_include_directories(ur3_mtc_plan_only PRIVATE
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-)
-ament_target_dependencies(ur3_mtc_plan_only
-  moveit_task_constructor_core
-  moveit_ros_planning_interface
-  rclcpp
-)
-install(TARGETS ur3_mtc_plan_only
   DESTINATION lib/${PROJECT_NAME}
 )
 
 
-
+add_executable(mtc_pick_place src/mtc_pick_place.cpp)
+target_include_directories(mtc_pick_place PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(mtc_pick_place
+  rclcpp
+  moveit_msgs
+  moveit_ros_planning_interface
+  moveit_task_constructor_core
+  shape_msgs
+)
+install(TARGETS mtc_pick_place
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 
 if(BUILD_TESTING)

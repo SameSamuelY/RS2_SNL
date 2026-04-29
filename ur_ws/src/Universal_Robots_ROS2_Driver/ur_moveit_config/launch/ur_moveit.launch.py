@@ -46,6 +46,10 @@ from launch.substitutions import (
     PathJoinSubstitution,
 )
 
+kinematics_yaml = ParameterValue(
+    Command(['cat ', PathJoinSubstitution([FindPackageShare('ur_moveit_config'), 'config', 'kinematics.yaml'])]),
+    value_type=str
+)
 
 def launch_setup(context, *args, **kwargs):
 
@@ -60,6 +64,7 @@ def launch_setup(context, *args, **kwargs):
     _publish_robot_description_semantic = LaunchConfiguration("publish_robot_description_semantic")
     moveit_config_package = LaunchConfiguration("moveit_config_package")
     moveit_joint_limits_file = LaunchConfiguration("moveit_joint_limits_file")
+    kinematics_file = LaunchConfiguration("kinematics_file")
     moveit_config_file = LaunchConfiguration("moveit_config_file")
     warehouse_sqlite_path = LaunchConfiguration("warehouse_sqlite_path")
     prefix = LaunchConfiguration("prefix")
@@ -155,9 +160,20 @@ def launch_setup(context, *args, **kwargs):
         "publish_robot_description_semantic": _publish_robot_description_semantic
     }
 
-    robot_description_kinematics = PathJoinSubstitution(
-        [FindPackageShare(moveit_config_package), "config", "kinematics.yaml"]
-    )
+    # robot_description_kinematics = PathJoinSubstitution(
+    #     [FindPackageShare(moveit_config_package), "config", "kinematics.yaml"]
+    # )
+    # robot_description_kinematics = {
+    #     "robot_description_kinematics": load_yaml(
+    #         "ur_onrobot_moveit_config", "config/kinematics.yaml"
+    #     )
+    # }
+    robot_description_kinematics = {
+        "robot_description_kinematics": load_yaml(
+            str(moveit_config_package.perform(context)),
+            os.path.join("config", str(kinematics_file.perform(context))),
+        )
+    }
 
     robot_description_planning = {
         "robot_description_planning": load_yaml(
@@ -220,7 +236,8 @@ def launch_setup(context, *args, **kwargs):
             robot_description,
             robot_description_semantic,
             publish_robot_description_semantic,
-            robot_description_kinematics,
+            # robot_description_kinematics,
+            {'robot_description_kinematics': kinematics_yaml},
             robot_description_planning,
             ompl_planning_pipeline_config,
             trajectory_execution,
@@ -247,7 +264,8 @@ def launch_setup(context, *args, **kwargs):
             robot_description,
             robot_description_semantic,
             ompl_planning_pipeline_config,
-            robot_description_kinematics,
+            # robot_description_kinematics,
+            {'robot_description_kinematics': kinematics_yaml},
             robot_description_planning,
             warehouse_ros_config,
             {
@@ -366,6 +384,13 @@ def generate_launch_description():
             "moveit_joint_limits_file",
             default_value="joint_limits.yaml",
             description="MoveIt joint limits that augment or override the values from the URDF robot_description.",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "kinematics_file",
+            default_value="kinematics.yaml",
+            description="MoveIt kinematics configuration file.",
         )
     )
     declared_arguments.append(

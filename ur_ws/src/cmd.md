@@ -75,9 +75,14 @@ ros2 launch ur3_planner bringup.launch.py \
 # gripper driver
 ros2 run controller_manager spawner finger_width_trajectory_controller
 
-ros2 topic pub --once /ur3_gripper_cmd std_msgs/msg/Float64MultiArray "{data: [0.05]}"
+ros2 topic pub --once /ur3_gripper_cmd std_msgs/msg/Float64MultiArray "{data: [0.11]}"
 
 ros2 run ur3_mtc mtc_node
+
+ros2 action list | grep execute_task_solution
+
+
+ros2 param get /move_group robot_description_kinematics
 
 
 # Terminal 2 Driver (Real Connection)
