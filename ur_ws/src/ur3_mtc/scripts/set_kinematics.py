@@ -9,7 +9,7 @@ class KinematicsSetter(Node):
         super().__init__('kinematics_setter')
         self.client = self.create_client(SetParameters, '/move_group/set_parameters')
         while not self.client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Waiting for /move_group/set_parameters service...')
+            self.get_logger().info('Waiting for /move_group/set_parameters...')
         self.get_logger().info('Service available.')
 
     def set_kinematics(self, yaml_path):
@@ -30,7 +30,7 @@ class KinematicsSetter(Node):
 def main(args=None):
     rclpy.init(args=args)
     setter = KinematicsSetter()
-    yaml_path = '/home/samuel/git/RS2_SNL/ur_ws/src/Universal_Robots_ROS2_Driver/ur_moveit_config/config/kinematics.yaml'
+    yaml_path = '~/git/RS2_SNL/ur_ws/src/Universal_Robots_ROS2_Driver/ur_moveit_config/config/kinematics.yaml'
     setter.set_kinematics(yaml_path)
     rclpy.shutdown()
 
