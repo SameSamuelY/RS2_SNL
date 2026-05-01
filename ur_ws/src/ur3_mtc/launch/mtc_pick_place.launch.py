@@ -8,7 +8,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
-    # Configuration arguments (pass through to bringup)
+    # Configuration arguments
     robot_ip = LaunchConfiguration('robot_ip', default='192.168.56.101')
     planner_id = LaunchConfiguration('planner_id', default='RRTConnectkConfigDefault')
     ignore_if_busy = LaunchConfiguration('ignore_if_busy', default='true')
@@ -18,7 +18,7 @@ def generate_launch_description():
     use_fake_hardware = LaunchConfiguration('use_fake_hardware', default='true')
     headless_mode = LaunchConfiguration('headless_mode', default='true')
     
-    # 1. Include the main bringup launch (UR driver + MoveIt + RViz)
+    # 1. Include the main bringup launch
     bringup = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             PathJoinSubstitution([FindPackageShare('ur3_planner'), 'launch', 'bringup.launch.py'])
@@ -30,28 +30,57 @@ def generate_launch_description():
             'trajectory_velocity_scaling': trajectory_velocity_scaling,
             'trajectory_acceleration_scaling': trajectory_acceleration_scaling,
             'connection_type': connection_type,
-            'use_fake_hardware': use_fake_hardware,
-            'headless_mode': headless_mode,
+            'use_fake_hardware': 'false', # Force real hardware for MTC testing
+            'headless_mode': 'false', # Force RViz for MTC testing
         }.items()
     )
     
-    # 2. Set kinematics parameter using a one‑time Python script
-    kinematics_script = PathJoinSubstitution([
-        FindPackageShare('ur3_mtc'), 'scripts', 'set_kinematics.py'
-    ])
-    set_kinematics = TimerAction(
-        period=6.0,  # after controller activation
+    # 2. Start the External Control program via dashboard
+    # Stop the program (if running) and then start it
+    stop_program = TimerAction(
+        period=5.0,
         actions=[
             ExecuteProcess(
-                cmd=['python3', kinematics_script],
+                cmd=['ros2', 'service', 'call', '/dashboard_client/stop', 'std_srvs/srv/Trigger', '{}'],
+                output='screen'
+            )
+        ]
+    )
+    start_program = TimerAction(
+        period=6.0,  # wait 1 second after stop
+        actions=[
+            ExecuteProcess(
+                cmd=['ros2', 'service', 'call', '/dashboard_client/play', 'std_srvs/srv/Trigger', '{}'],
                 output='screen'
             )
         ]
     )
     
-    # 3. Run the MTC pick‑and‑place node
+    # 3. Activate trajectory controller
+    activate_controller = TimerAction(
+        period=10.0,
+        actions=[
+            ExecuteProcess(
+                cmd=['ros2', 'control', 'switch_controllers', '--activate', 'scaled_joint_trajectory_controller'],
+                output='screen'
+            )
+        ]
+    )
+    
+    # 4. Set kinematics parameter (if needed for Cartesian planning)
+    set_kinematics = TimerAction(
+        period=12.0,
+        actions=[
+            ExecuteProcess(
+                cmd=['python3', PathJoinSubstitution([FindPackageShare('ur3_mtc'), 'scripts', 'set_kinematics.py'])],
+                output='screen'
+            )
+        ]
+    )
+    
+    # 5. Run the MTC pick-and-place node
     mtc_node = TimerAction(
-        period=7.0,  # after kinematics is set
+        period=16.0,
         actions=[
             Node(
                 package='ur3_mtc',
@@ -64,6 +93,9 @@ def generate_launch_description():
     
     return LaunchDescription([
         # bringup,
-        set_kinematics,
+        stop_program,
+        start_program,
+        activate_controller,
+        # set_kinematics,
         mtc_node,
     ])

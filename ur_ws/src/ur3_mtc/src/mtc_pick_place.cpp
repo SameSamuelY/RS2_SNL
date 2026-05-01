@@ -50,10 +50,13 @@ void MTCPickPlaceNode::setupPlanningScene()
   object.primitives[0].dimensions = {0.1, 0.03};  // height 0.1 m, radius 0.03 m
 
   geometry_msgs::msg::Pose pose;
-  pose.position.x = 0.4;        // moved further away from robot base
-  pose.position.y = -0.2;
-  pose.position.z = 0.06;
-  pose.orientation.y = 0.707;
+  pose.position.x = 0.3;        // moved further away from robot base
+  pose.position.y = -0.162;
+  pose.position.z = 0.03;       // on the table
+  pose.orientation.x = 0;
+  pose.orientation.y = 1;
+  pose.orientation.z = 0;
+  pose.orientation.w = 1;
   object.primitive_poses.push_back(pose);
   object.operation = object.ADD;
 
@@ -97,25 +100,28 @@ mtc::Task MTCPickPlaceNode::createTask()
   task.setProperty("eef", hand_group);
   task.setProperty("ik_frame", hand_frame);
 
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+  #pragma GCC diagnostic pop
+
+  // auto sampling_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_);
   auto joint_planner = std::make_shared<mtc::solvers::JointInterpolationPlanner>();
-
-  // Stage 1: current state
-  task.add(std::make_unique<mtc::stages::CurrentState>("current"));
-
-  // Stage 2: open gripper
-  auto open = std::make_unique<mtc::stages::MoveTo>("open gripper", joint_planner);
-  open->setGroup(hand_group);
-  open->setGoal("open");
-  task.add(std::move(open));
+  
+  // auto cartesian_planner = std::make_shared<mtc::solvers::CartesianPath>();
+  // cartesian_planner->setMaxVelocityScalingFactor(0.5);
+  // cartesian_planner->setMaxAccelerationScalingFactor(0.5);
+  // cartesian_planner->setStepSize(.01);
 
   // Helper for arm stages
-  auto add_arm_stage = [&](const std::string& name, const std::map<std::string, double>& joints) {
+  auto add_arm_stage = [&](const std::string& name, const std::map<std::string, double>& joints) 
+  {
     auto stage = std::make_unique<mtc::stages::MoveTo>(name, joint_planner);
     stage->setGroup(arm_group);
     stage->setGoal(joints);
     task.add(std::move(stage));
   };
 
+  
   // Home configuration (up, away from object)
   std::map<std::string, double> home_joints = {
     {"shoulder_pan_joint", 0.0},
@@ -126,50 +132,73 @@ mtc::Task MTCPickPlaceNode::createTask()
     {"wrist_3_joint", 0.0}
   };
 
-  // Pre-grasp (above object) – same as home, then we will move to a grasp pose later
-  std::map<std::string, double> pre_grasp_joints = home_joints;
-
-  // Grasp configuration (lower elbow and adjust wrist to reach object at x=0.7)
+  // Grasp configuration (lower elbow and adjust wrist to reach object)
   // These are approximate; you will need to tune them using RViz.
   std::map<std::string, double> grasp_joints = home_joints;
-  grasp_joints["shoulder_pan_joint"] = -3.30;
-  grasp_joints["shoulder_lift_joint"] = -1.56;
-  grasp_joints["elbow_joint"] = -1.93;
-  grasp_joints["wrist_1_joint"] = -1.14;
-  grasp_joints["wrist_2_joint"] = 1.56;
-  grasp_joints["wrist_3_joint"] = 1.38;
+    grasp_joints["shoulder_pan_joint"] = -3.30;
+    grasp_joints["shoulder_lift_joint"] = -1.56;
+    grasp_joints["elbow_joint"] = -1.93;
+    grasp_joints["wrist_1_joint"] = -1.14;
+    grasp_joints["wrist_2_joint"] = 1.56;
+    grasp_joints["wrist_3_joint"] = 1.38;
 
-  // Place pre‑pose (opposite side)
-  std::map<std::string, double> place_pre_joints = home_joints;
-  place_pre_joints["shoulder_pan_joint"] = -0.3;
-  place_pre_joints["shoulder_lift_joint"] = -1.2;
-  place_pre_joints["elbow_joint"] = 0.5;
-  place_pre_joints["wrist_1_joint"] = -1.0;
+  // Pre-grasp (above object) – same as home, then we will move to a grasp pose later
+  std::map<std::string, double> pre_grasp_joints = grasp_joints;
+    pre_grasp_joints["elbow_joint"] = -1.57;  // lift up before moving over to place side
 
   // Place pose (lower to drop)
-  std::map<std::string, double> place_joints = place_pre_joints;
-  place_joints["elbow_joint"] = 0.9;
+  std::map<std::string, double> place_joints = grasp_joints;
+    place_joints["shoulder_pan_joint"] = 1.0;
 
-  // Stages
+  // Place pre‑pose (opposite side)
+  std::map<std::string, double> place_pre_joints = place_joints;
+    place_pre_joints["elbow_joint"] = -1.57;  // lift up before moving over to place side
+  
+
+  // Stage 1: current state
+  mtc::Stage* current_state_ptr = nullptr;  // Forward current_state on to grasp pose generator
+  auto stage_state_current = std::make_unique<mtc::stages::CurrentState>("current");
+  current_state_ptr = stage_state_current.get();
+  task.add(std::move(stage_state_current));
+
+  // Stage 2: open gripper
+  auto open = std::make_unique<mtc::stages::MoveTo>("open gripper", joint_planner);
+  open->setGroup(hand_group);
+  open->setGoal("open");
+  task.add(std::move(open));
+
+  // Stage 3: move above object
   add_arm_stage("pre grasp", pre_grasp_joints);   // safe above object
+  // Stage 4: move to grasp pose
   add_arm_stage("grasp", grasp_joints);           // move to object
+
+  // Stage 5: close gripper
   auto close = std::make_unique<mtc::stages::MoveTo>("close gripper", joint_planner);
   close->setGroup(hand_group);
-  close->setGoal("closed");
+  close->setGoal({{"finger_width", 0.062}});
   task.add(std::move(close));
+
+  // Stage 6: attach object to robot in planning scene
   auto attach = std::make_unique<mtc::stages::ModifyPlanningScene>("attach object");
   attach->attachObject("cylinder_object", hand_frame);
   task.add(std::move(attach));
-  add_arm_stage("lift", pre_grasp_joints);        // lift object
+
+  // Stage 7: move to place pose
+  add_arm_stage("lift", pre_grasp_joints); 
   add_arm_stage("place pre", place_pre_joints);   // move to place side
-  add_arm_stage("place", place_joints);           // lower
+  add_arm_stage("place", place_joints); 
+  
+  // Stage 8: open gripper to release object
   auto open_place = std::make_unique<mtc::stages::MoveTo>("open gripper place", joint_planner);
   open_place->setGroup(hand_group);
   open_place->setGoal("open");
   task.add(std::move(open_place));
+
+  // Stage 9: detach object from robot in planning scene
   auto detach = std::make_unique<mtc::stages::ModifyPlanningScene>("detach object");
   detach->detachObject("cylinder_object", hand_frame);
   task.add(std::move(detach));
+
   add_arm_stage("retreat", home_joints);     // retreat
 
   return task;

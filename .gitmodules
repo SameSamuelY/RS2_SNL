@@ -1,0 +1,7 @@
+[submodule "ur_ws/src/moveit_task_constructor"]
+	path = ur_ws/src/moveit_task_constructor
+	url = https://github.com/moveit/moveit_task_constructor.git
+	branch = humble
+[submodule "ur_ws/src/moveit2_tutorials_ur_onrobot"]
+	path = ur_ws/src/moveit2_tutorials_ur_onrobot
+	url = https://github.com/tonydle/moveit2_tutorials_ur_onrobot.git

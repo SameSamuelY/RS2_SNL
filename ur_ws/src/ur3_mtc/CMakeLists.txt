@@ -42,11 +42,10 @@ install(TARGETS mtc_pick_place
 )
 
 
-install(PROGRAMS
-    scripts/set_kinematics.py
-    DESTINATION lib/${PROJECT_NAME}
+install(PROGRAMS 
+  scripts/set_kinematics.py
+  DESTINATION share/${PROJECT_NAME}/scripts
 )
-
 
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}/

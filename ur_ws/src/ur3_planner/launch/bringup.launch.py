@@ -13,13 +13,13 @@ def generate_launch_description():
     ur_type = LaunchConfiguration('ur_type', default='ur3')
     planner_id = LaunchConfiguration('planner_id', default='RRTConnectkConfigDefault')
     # launch_rviz = LaunchConfiguration('launch_rviz', default='true')
-    trajectory_velocity_scaling = LaunchConfiguration('trajectory_velocity_scaling', default='0.3')
-    trajectory_acceleration_scaling = LaunchConfiguration('trajectory_acceleration_scaling', default='0.3')
+    trajectory_velocity_scaling = LaunchConfiguration('trajectory_velocity_scaling', default='0.1')
+    trajectory_acceleration_scaling = LaunchConfiguration('trajectory_acceleration_scaling', default='0.1')
     use_fake_hardware = LaunchConfiguration('use_fake_hardware', default='false')
     use_fake_gripper = LaunchConfiguration('use_fake_gripper', default='true')
     gripper_connection_type = LaunchConfiguration('gripper_connection_type', default='tcp')
     headless_mode = LaunchConfiguration('headless_mode', default='false')
-    ignore_if_busy = LaunchConfiguration('ignore_if_busy', default='false')
+    ignore_if_busy = LaunchConfiguration('ignore_if_busy', default='true')
     initial_joint_controller = LaunchConfiguration("initial_joint_controller", default="scaled_joint_trajectory_controller")
     ip_address = LaunchConfiguration('ip_address', default='192.168.1.1')
 
@@ -124,13 +124,13 @@ def generate_launch_description():
 
     return LaunchDescription([
         ur_driver,
-        spawn_gripper_controller,
+        # spawn_gripper_controller,
         spawn_gripper_traj_controller,
         moveit,
         listener_node,
         activate_controller,
         gui,
         # gripper_driver,
-        # joint_state_bridge
+        # joint_state_bridge,
     ])
 

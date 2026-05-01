@@ -48,10 +48,6 @@ ros2 run ur_client_library start_ursim.sh \
 # Terminal 2-4 bringup.launch (Sim Default)
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \
-    planner_id:=RRTConnectkConfigDefault \
-    ignore_if_busy:=true \
-    trajectory_velocity_scaling:=0.1 \
-    trajectory_acceleration_scaling:=0.1 \
     connection_type:=serial
 
 
@@ -73,14 +69,20 @@ ros2 launch ur3_planner bringup.launch.py \
 
 
 # gripper driver
+ros2 control list_controllers
+ros2 action list | grep execute_task_solution
+
 ros2 run controller_manager spawner finger_width_trajectory_controller
 
 ros2 topic pub --once /ur3_gripper_cmd std_msgs/msg/Float64MultiArray "{data: [0.11]}"
 
 ros2 run ur3_mtc mtc_node
 
+ros2 launch ur3_mtc mtc_pick_place.launch.py
+
 ros2 action list | grep execute_task_solution
 
+chmod +x ~/git/RS2_SNL/ur_ws/src/ur3_mtc/scripts/set_kinematics.py
 
 ros2 param get /move_group robot_description_kinematics
 
