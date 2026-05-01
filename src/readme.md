@@ -1,79 +1,302 @@
-# RS2 GUI Control (Subsystem 3 – Interaction and Execution)
+# Subsystem 3 — Interaction & Execution GUI (ROS2)
 
-This project implements a **ROS 2 Humble + PyQt5 GUI** for controlling a robotic system.  
-It is part of **Subsystem 3: Interaction and Execution**, focusing on user interaction, system control, and command communication.
+## Overview
+This subsystem provides a PyQt + ROS2 GUI for human–robot interaction and execution control for a UR3 pick-and-place system.
 
----
-
-## 🚀 Features
-
-- Start / Stop / Reset control buttons  
-- System state display (Idle, Executing, Stopped, Completed)  
-- Command logging interface  
-- ROS 2 publisher for command communication (`/gui_command`)  
-- Ready for integration with motion planning subsystem  
+The GUI integrates user control, perception outputs, and motion planning communication into a single interface.
 
 ---
 
-## 📁 Project Structure
+# Features
 
-```bash
-ros2_ws/
-├── src/
-│   └── gui_control/
-│       ├── gui_control/
-│       │   ├── __init__.py
-│       │   └── gui_node.py
-│       ├── resource/
-│       │   └── gui_control
-│       ├── package.xml
-│       ├── setup.py
-│       └── setup.cfg
-├── build/        # generated (DO NOT COMMIT)
-├── install/      # generated (DO NOT COMMIT)
-├── log/          # generated (DO NOT COMMIT)
-└── README.md
+## GUI Controls
+- Start / Stop / Reset task controls  
+- Cartesian goal pose input  
+- Object placement position input  
+- Gripper finger width slider  
+- Velocity scaling slider  
+- Safe workspace limit validation  
 
-## How to Run
+## Perception Integration
+- Live RGB camera feed from Intel RealSense  
+- Shape and colour detections displayed in GUI  
+- AprilTag detections received from perception subsystem  
+- Detection results can auto-populate pick pose targets  
 
-Follow these steps to run the GUI.
+## Motion Planning Integration
 
-### 1. Open a terminal and go to your workspace
+### Publishes to:
+```text
+/ur3_goal_pose
+/place_goal_pose
+/finger_width_controller/commands
+/velocity_scale
+/gui_command
+```
+
+### Subscribes to:
+```text
+/motion_status
+/detection_result
+/camera/camera/color/image_raw
+```
+
+---
+
+# Workspace Build
+
+From workspace root:
+
 ```bash
 cd ~/ros2_ws
+colcon build --packages-select gui_control
+source install/setup.bash
+```
 
-### 2. Source ROS 2
-source /opt/ros/humble/setup.bash
+---
 
-### 3. Build the package (only needed if first time or after changes)
-colcon build --packages-select gui_control --symlink-install
+# Dependencies
 
-###4. Source the workspace
+## GUI + Python
+```bash
+sudo apt update
+sudo apt install python3-pyqt5 python3-opencv python3-pip
+```
+
+## ROS Humble cv_bridge compatibility fix
+Required:
+
+```bash
+pip uninstall numpy opencv-python-headless -y
+pip install numpy==1.26.4
+pip install opencv-python-headless==4.8.1.78
+```
+
+---
+
+# Full System Bring-Up
+
+## Terminal 1 — Launch Intel RealSense
+```bash
+cd ~/ros2_ws
 source install/setup.bash
 
-###5. Run the GUI
+ros2 launch realsense2_camera rs_launch.py align_depth.enable:=true
+```
+
+---
+
+## Terminal 2 — Shape and Colour Detection
+```bash
+cd ~/ros2_ws
+source install/setup.bash
+
+ros2 run rs2_snl_pkg shape_colour_detector_node
+```
+
+Publishes:
+
+```text
+/detection_result
+```
+
+---
+
+## Terminal 3 — AprilTag Detection
+```bash
+cd ~/ros2_ws
+source install/setup.bash
+
+ros2 run apriltag_ros apriltag_node \
+--ros-args \
+-r image_rect:=/camera/camera/color/image_raw \
+-r camera_info:=/camera/camera/color/camera_info \
+--params-file ~/ros2_ws/src/RS2_SNL/rs2_snl_pkg/config/apriltag.yaml
+```
+
+---
+
+## Terminal 4 — Launch GUI
+```bash
+cd ~/ros2_ws
+source install/setup.bash
+
 ros2 run gui_control gui_node
+```
 
-The GUI window should appear.
+---
 
-(Optional) Check ROS2 Communication
+# Optional Full UR3 Integration
+Launch motion planner / UR3 simulation:
 
-Open another terminal and run:
+```bash
+ros2 launch ur3_motion_planner bringup.launch.py
+```
 
+Full pipeline:
+
+```text
+Perception
+→ GUI
+→ Motion Planner
+→ UR3 Simulation
+```
+
+---
+
+# Topic Verification
+
+Check active topics:
+
+```bash
+ros2 topic list
+```
+
+Expected:
+
+```text
+/camera/camera/color/image_raw
+/detection_result
+/ur3_goal_pose
+/place_goal_pose
+/finger_width_controller/commands
+/velocity_scale
+/gui_command
+/motion_status
+```
+
+---
+
+# Testing
+
+## Test Pick Pose Publisher
+```bash
+ros2 topic echo /ur3_goal_pose
+```
+
+Press:
+
+```text
+Send Pick Pose
+```
+
+---
+
+## Test Place Pose Publisher
+```bash
+ros2 topic echo /place_goal_pose
+```
+
+Press:
+
+```text
+Send Place Pose
+```
+
+---
+
+## Test Gripper Command
+```bash
+ros2 topic echo /finger_width_controller/commands
+```
+
+Use gripper slider + send command.
+
+---
+
+## Test Velocity Scale
+```bash
+ros2 topic echo /velocity_scale
+```
+
+Adjust slider and publish.
+
+---
+
+## Test Detection Integration
+
+1. Detection objects appear in GUI dropdown  
+2. Select object  
+3. Click:
+
+```text
+Use Detection as Pick Pose
+```
+
+This copies:
+
+```text
+tag_x_m
+tag_y_m
+tag_z_m
+```
+
+into the Cartesian goal pose.
+
+---
+
+## Test Full Task
+
+Press:
+
+```text
+Start Pick-and-Place
+```
+
+Publishes:
+
+```text
+start
+```
+
+to:
+
+```text
+/ gui_command
+```
+
+and triggers execution.
+
+---
+
+# Rebuild After Code Changes
+```bash
 cd ~/ros2_ws
-source /opt/ros/humble/setup.bash
+colcon build --packages-select gui_control
 source install/setup.bash
-ros2 topic echo /gui_command
+```
 
-###When you press buttons in the GUI, you should see:
-data: start
-data: stop
-data: reset
+---
 
-###Notes
-Always run commands from ~/projects/RS2_SNL
-Always source ROS2 and the workspace before running
-Rebuild only when you modify code
-Make sure PyQt5 is installed:
-sudo apt install python3-pyqt5
-Do not commit generated folders (build/, install/, log/)
+# Files
+
+Main GUI node:
+
+```text
+gui_control/gui_node.py
+```
+
+---
+
+# Rubric Coverage
+
+Implemented:
+
+✅ GUI includes object placement positions  
+✅ User can set maximum/minimum velocity using slider  
+✅ User can set safe workspace positions/limits in GUI  
+✅ Live camera feed displayed through PyQt GUI  
+✅ Perception subsystem integration  
+✅ GUI ↔ motion planning subsystem integration  
+
+---
+
+# Bring-Up Order (Quick Reference)
+
+```text
+1. Launch RealSense
+2. Run shape/colour detector
+3. Run AprilTag node
+4. Launch GUI
+5. Test pick pose, detections, gripper and camera feed
+```

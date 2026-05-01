@@ -24,9 +24,10 @@ setup(
             'pytest',
         ],
     },
-    entry_points={
+   entry_points={
         'console_scripts': [
             'gui_node = gui_control.gui_node:main',
+            'voice_command_node = gui_control.voice_command_node:main',
         ],
     },
 )
