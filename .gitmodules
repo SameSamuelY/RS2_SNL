@@ -5,3 +5,11 @@
 [submodule "ur_ws/src/moveit2_tutorials_ur_onrobot"]
 	path = ur_ws/src/moveit2_tutorials_ur_onrobot
 	url = https://github.com/tonydle/moveit2_tutorials_ur_onrobot.git
+[submodule "ur_ws/src/moveit2"]
+	path = ur_ws/src/moveit2
+	url = https://github.com/ros-planning/moveit2.git
+	branch = humble
+[submodule "ur_ws/src/pick_ik"]
+	path = ur_ws/src/pick_ik
+	url = https://github.com/PickNikRobotics/pick_ik.git
+	branch = main

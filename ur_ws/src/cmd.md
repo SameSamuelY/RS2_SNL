@@ -86,6 +86,10 @@ chmod +x ~/git/RS2_SNL/ur_ws/src/ur3_mtc/scripts/set_kinematics.py
 
 ros2 param get /move_group robot_description_kinematics
 
+ros2 run ur3_mtc mtc_cartesian --ros-args \
+  -p pick_pose.position.x:=0.3 -p pick_pose.position.y:=-0.162 -p pick_pose.position.z:=0.05 \
+  -p place_pose.position.x:=0.0 -p place_pose.position.y:=0.3 -p place_pose.position.z:=0.05
+
 
 # Terminal 2 Driver (Real Connection)
 ros2 launch ur_robot_driver ur_control.launch.py ur_type:=ur3 robot_ip:=192.168.0.195 launch_rviz:=false

@@ -29,7 +29,7 @@ def generate_launch_description():
             PathJoinSubstitution([
                 FindPackageShare('ur_robot_driver'),
                 'launch',
-                'ur_control.launch.py'
+                'ur_control.launch.py',
             ])
         ]),
         launch_arguments={
@@ -44,6 +44,8 @@ def generate_launch_description():
             'use_fake_gripper': 'true', # Force fake gripper for now to avoid issues with real gripper connection
             'gripper_connection_type': gripper_connection_type,
             'headless_mode': headless_mode,
+            # 'description_file': 'ur.urdf.xacro', 
+            'description_file': 'ur_onrobot.urdf.xacro', # Use the URDF with the gripper attached
         }.items()
     )
 
@@ -59,6 +61,8 @@ def generate_launch_description():
         launch_arguments={
             'ur_type': ur_type,
             'launch_rviz': 'true', # Default: true
+            # 'description_file': 'ur.urdf.xacro', 
+            'description_file': 'ur_onrobot.urdf.xacro', # Use the URDF with the gripper attached
         }.items()
     )
 
@@ -124,13 +128,12 @@ def generate_launch_description():
 
     return LaunchDescription([
         ur_driver,
-        # spawn_gripper_controller,
         spawn_gripper_traj_controller,
         moveit,
         listener_node,
         activate_controller,
         gui,
+        # spawn_gripper_controller,
         # gripper_driver,
-        # joint_state_bridge,
     ])
 

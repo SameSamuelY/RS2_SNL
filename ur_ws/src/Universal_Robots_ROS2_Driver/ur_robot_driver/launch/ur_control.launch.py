@@ -499,6 +499,7 @@ def generate_launch_description():
             "description_file",
             default_value="ur.urdf.xacro",
             description="URDF/XACRO description file with the robot.",
+            choices=["ur.urdf.xacro","ur_onrobot.urdf.xacro"],
         )
     )
     declared_arguments.append(

@@ -41,6 +41,22 @@ install(TARGETS mtc_pick_place
   DESTINATION lib/${PROJECT_NAME}
 )
 
+add_executable(mtc_pick_place_kinematics src/mtc_pick_place_kinematics.cpp)
+target_include_directories(mtc_pick_place_kinematics PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(mtc_pick_place_kinematics
+  rclcpp
+  moveit_msgs
+  moveit_ros_planning_interface
+  moveit_task_constructor_core
+  geometry_msgs
+  shape_msgs
+)
+install(TARGETS mtc_pick_place_kinematics
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 install(PROGRAMS 
   scripts/set_kinematics.py

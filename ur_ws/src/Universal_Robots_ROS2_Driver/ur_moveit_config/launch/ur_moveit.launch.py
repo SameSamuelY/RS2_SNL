@@ -46,25 +46,26 @@ from launch.substitutions import (
     PathJoinSubstitution,
 )
 
-kinematics_yaml = ParameterValue(
-    Command(['cat ', PathJoinSubstitution([FindPackageShare('ur_moveit_config'), 'config', 'kinematics.yaml'])]),
-    value_type=str
-)
+# kinematics_yaml = ParameterValue(
+#     Command(['cat ', PathJoinSubstitution([FindPackageShare('ur_moveit_config'), 'config', 'kinematics.yaml'])]),
+#     value_type=str
+# )
 
 def launch_setup(context, *args, **kwargs):
 
     # Initialize Arguments
     ur_type = LaunchConfiguration("ur_type")
+    onrobot_type = LaunchConfiguration("onrobot_type")
     safety_limits = LaunchConfiguration("safety_limits")
     safety_pos_margin = LaunchConfiguration("safety_pos_margin")
     safety_k_position = LaunchConfiguration("safety_k_position")
+
     # General arguments
     description_package = LaunchConfiguration("description_package")
     description_file = LaunchConfiguration("description_file")
     _publish_robot_description_semantic = LaunchConfiguration("publish_robot_description_semantic")
     moveit_config_package = LaunchConfiguration("moveit_config_package")
     moveit_joint_limits_file = LaunchConfiguration("moveit_joint_limits_file")
-    kinematics_file = LaunchConfiguration("kinematics_file")
     moveit_config_file = LaunchConfiguration("moveit_config_file")
     warehouse_sqlite_path = LaunchConfiguration("warehouse_sqlite_path")
     prefix = LaunchConfiguration("prefix")
@@ -120,6 +121,9 @@ def launch_setup(context, *args, **kwargs):
             "ur_type:=",
             ur_type,
             " ",
+            "onrobot_type:=",
+            onrobot_type,
+            " ",
             "script_filename:=ros_control.urscript",
             " ",
             "input_recipe_filename:=rtde_input_recipe.txt",
@@ -131,9 +135,7 @@ def launch_setup(context, *args, **kwargs):
             " ",
         ]
     )
-    robot_description = {
-        "robot_description": ParameterValue(robot_description_content, value_type=str)
-    }
+    robot_description = {"robot_description": robot_description_content}
 
     # MoveIt Configuration
     robot_description_semantic_content = Command(
@@ -160,18 +162,9 @@ def launch_setup(context, *args, **kwargs):
         "publish_robot_description_semantic": _publish_robot_description_semantic
     }
 
-    # robot_description_kinematics = PathJoinSubstitution(
-    #     [FindPackageShare(moveit_config_package), "config", "kinematics.yaml"]
-    # )
-    # robot_description_kinematics = {
-    #     "robot_description_kinematics": load_yaml(
-    #         "ur_onrobot_moveit_config", "config/kinematics.yaml"
-    #     )
-    # }
     robot_description_kinematics = {
         "robot_description_kinematics": load_yaml(
-            str(moveit_config_package.perform(context)),
-            os.path.join("config", str(kinematics_file.perform(context))),
+            "ur_moveit_config", "config/kinematics.yaml"
         )
     }
 
@@ -236,8 +229,7 @@ def launch_setup(context, *args, **kwargs):
             robot_description,
             robot_description_semantic,
             publish_robot_description_semantic,
-            # robot_description_kinematics,
-            {'robot_description_kinematics': kinematics_yaml},
+            robot_description_kinematics,
             robot_description_planning,
             ompl_planning_pipeline_config,
             trajectory_execution,
@@ -245,7 +237,7 @@ def launch_setup(context, *args, **kwargs):
             planning_scene_monitor_parameters,
             {"use_sim_time": use_sim_time},
             warehouse_ros_config,
-            {"capabilities": "move_group/ExecuteTaskSolutionCapability"},
+            {"capabilities": "move_group/ExecuteTaskSolutionCapability"}
         ],
     )
 
@@ -264,8 +256,7 @@ def launch_setup(context, *args, **kwargs):
             robot_description,
             robot_description_semantic,
             ompl_planning_pipeline_config,
-            # robot_description_kinematics,
-            {'robot_description_kinematics': kinematics_yaml},
+            robot_description_kinematics,
             robot_description_planning,
             warehouse_ros_config,
             {
@@ -302,22 +293,15 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "ur_type",
             description="Type/series of used UR robot.",
-            choices=[
-                "ur3",
-                "ur5",
-                "ur10",
-                "ur3e",
-                "ur5e",
-                "ur7e",
-                "ur10e",
-                "ur12e",
-                "ur16e",
-                "ur8long",
-                "ur15",
-                "ur18",
-                "ur20",
-                "ur30",
-            ],
+            choices=["ur3","ur3e"],
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "onrobot_type",
+            default_value="rg2",
+            description="Type of the OnRobot gripper.",
+            choices=["rg2", "rg6"],
         )
     )
     declared_arguments.append(
@@ -355,6 +339,7 @@ def generate_launch_description():
             "description_file",
             default_value="ur.urdf.xacro",
             description="URDF/XACRO description file with the robot.",
+            choices=["ur.urdf.xacro","ur_onrobot.urdf.xacro"],
         )
     )
     declared_arguments.append(
@@ -384,13 +369,6 @@ def generate_launch_description():
             "moveit_joint_limits_file",
             default_value="joint_limits.yaml",
             description="MoveIt joint limits that augment or override the values from the URDF robot_description.",
-        )
-    )
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            "kinematics_file",
-            default_value="kinematics.yaml",
-            description="MoveIt kinematics configuration file.",
         )
     )
     declared_arguments.append(

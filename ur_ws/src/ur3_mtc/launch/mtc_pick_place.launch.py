@@ -3,12 +3,24 @@ import os
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, ExecuteProcess, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import (
+    Command,
+    FindExecutable,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+)
+
 from launch_ros.actions import Node
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
+from launch_ros.parameter_descriptions import ParameterValue
+
+from ur_moveit_config.launch_common import load_yaml
+
 
 def generate_launch_description():
     # Configuration arguments
+    ur_type = LaunchConfiguration("ur_type", default='ur3')
+    onrobot_type = LaunchConfiguration("onrobot_type", default='rg2')
     robot_ip = LaunchConfiguration('robot_ip', default='192.168.56.101')
     planner_id = LaunchConfiguration('planner_id', default='RRTConnectkConfigDefault')
     ignore_if_busy = LaunchConfiguration('ignore_if_busy', default='true')
@@ -67,18 +79,7 @@ def generate_launch_description():
         ]
     )
     
-    # 4. Set kinematics parameter (if needed for Cartesian planning)
-    set_kinematics = TimerAction(
-        period=12.0,
-        actions=[
-            ExecuteProcess(
-                cmd=['python3', PathJoinSubstitution([FindPackageShare('ur3_mtc'), 'scripts', 'set_kinematics.py'])],
-                output='screen'
-            )
-        ]
-    )
-    
-    # 5. Run the MTC pick-and-place node
+    # 4. Run the MTC pick-and-place node
     mtc_node = TimerAction(
         period=16.0,
         actions=[
@@ -86,7 +87,7 @@ def generate_launch_description():
                 package='ur3_mtc',
                 executable='mtc_pick_place',
                 name='mtc_pick_place',
-                output='screen'
+                output='screen',
             )
         ]
     )
@@ -96,6 +97,5 @@ def generate_launch_description():
         stop_program,
         start_program,
         activate_controller,
-        # set_kinematics,
         mtc_node,
     ])
