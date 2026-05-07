@@ -1,41 +1,223 @@
 <?xml version="1.0"?>
-<robot name="ur_onrobot" xmlns:xacro="http://ros.org/wiki/xacro">
-    <!-- Arguments -->
-    <xacro:arg name="robot_ip" default="192.168.56.101"/>
-    <xacro:arg name="ur_type" default="ur3e"/>
-    <xacro:arg name="onrobot_type" default="rg2"/>
-    <xacro:arg name="tf_prefix" default=""/>
-    <xacro:arg name="name" default="ur_onrobot"/>
-    <xacro:arg name="use_fake_hardware" default="false"/>
-    <xacro:arg name="joint_limits_parameters_file" default="$(find ur_description)/config/$(arg ur_type)/joint_limits.yaml"/>
-    <xacro:arg name="kinematics_parameters_file" default="$(find ur_description)/config/$(arg ur_type)/default_kinematics.yaml"/>
-    <xacro:arg name="physical_parameters_file" default="$(find ur_description)/config/$(arg ur_type)/physical_parameters.yaml"/>
-    <xacro:arg name="visual_parameters_file" default="$(find ur_description)/config/$(arg ur_type)/visual_parameters.yaml"/>
-    <xacro:arg name="script_filename" default="$(find ur_client_library)/resources/external_control.urscript"/>
-    <xacro:arg name="input_recipe_filename" default="$(find ur_robot_driver)/resources/rtde_input_recipe.txt"/>
-    <xacro:arg name="output_recipe_filename" default="$(find ur_robot_driver)/resources/rtde_output_recipe.txt"/>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="ur_onrobot">
+  <!-- robot name parameter -->
+  <xacro:arg name="name" default="ur_onrobot"/>
+  <!-- import main macro -->
+  <xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro"/>
 
-    <xacro:include filename="$(find ur_description)/urdf/ur_onrobot_macro.xacro"/>
+  <!-- possible 'ur_type' values: ur3, ur5, ur10, ur3e, ur5e, ur7e, ur10e, ur12e, ur16e, ur8long, ur15, ur18, ur20, ur30 -->
+  <xacro:arg name="ur_type" default="ur3"/>
 
-    <link name="world"/>
+  <!-- parameters -->
+  <xacro:arg name="tf_prefix" default="" />
+  <xacro:arg name="joint_limit_params" default="$(find ur_description)/config/$(arg ur_type)/joint_limits.yaml"/>
+  <xacro:arg name="kinematics_params" default="$(find ur_description)/config/$(arg ur_type)/default_kinematics.yaml"/>
+  <xacro:arg name="physical_params" default="$(find ur_description)/config/$(arg ur_type)/physical_parameters.yaml"/>
+  <xacro:arg name="visual_params" default="$(find ur_description)/config/$(arg ur_type)/visual_parameters.yaml"/>
+  <xacro:arg name="transmission_hw_interface" default=""/>
+  <xacro:arg name="safety_limits" default="false"/>
+  <xacro:arg name="safety_pos_margin" default="0.15"/>
+  <xacro:arg name="safety_k_position" default="20"/>
+  <!-- ros2_control related parameters -->
+  <xacro:arg name="headless_mode" default="false" />
+  <xacro:arg name="robot_ip" default="192.168.56.101" />
+  <xacro:arg name="script_filename" default=""/>
+  <xacro:arg name="output_recipe_filename" default=""/>
+  <xacro:arg name="input_recipe_filename" default=""/>
+  <xacro:arg name="reverse_ip" default="0.0.0.0"/>
+  <xacro:arg name="script_command_port" default="50004"/>
+  <xacro:arg name="reverse_port" default="50001"/>
+  <xacro:arg name="script_sender_port" default="50002"/>
+  <xacro:arg name="trajectory_port" default="50003"/>
+  <!-- tool communication parameters -->
+  <xacro:arg name="use_tool_communication" default="false" />
+  <xacro:arg name="tool_voltage" default="0" />
+  <xacro:arg name="tool_parity" default="0" />
+  <xacro:arg name="tool_baud_rate" default="115200" />
+  <xacro:arg name="tool_stop_bits" default="1" />
+  <xacro:arg name="tool_rx_idle_chars" default="1.5" />
+  <xacro:arg name="tool_tx_idle_chars" default="3.5" />
+  <xacro:arg name="tool_device_name" default="/tmp/ttyUR" />
+  <xacro:arg name="tool_tcp_port" default="54321" />
 
-    <!--This will create the scene where the robot is located in-->
-    <xacro:ur_onrobot
-        parent="world"
-        robot_ip="$(arg robot_ip)"
-        ur_type="$(arg ur_type)"
-        onrobot_type="$(arg onrobot_type)"
-        tf_prefix="$(arg tf_prefix)"
-        use_fake_hardware="$(arg use_fake_hardware)"
-        joint_limits_parameters_file="$(arg joint_limits_parameters_file)"
-        kinematics_parameters_file="$(arg kinematics_parameters_file)"
-        physical_parameters_file="$(arg physical_parameters_file)"
-        visual_parameters_file="$(arg visual_parameters_file)"
-        script_filename="$(arg script_filename)"
-        output_recipe_filename="$(arg output_recipe_filename)"
-        input_recipe_filename="$(arg input_recipe_filename)"
-        >
-        <origin xyz="0 0 1" rpy="0 0 0" />
-    </xacro:ur_onrobot>
+  <!-- Simulation parameters -->
+  <xacro:arg name="use_fake_hardware" default="false" />
+  <xacro:arg name="fake_sensor_commands" default="false" />
+  <xacro:arg name="sim_gazebo" default="false" />
+  <xacro:arg name="sim_ignition" default="false" />
+  <xacro:arg name="simulation_controllers" default="" />
+
+  <!-- initial position for simulations -->
+  <xacro:arg name="initial_positions_file" default="$(find ur_description)/config/initial_positions.yaml"/>
+  
+  <!-- Gripper parameters -->
+  <xacro:arg name="use_fake_gripper" default="false" />
+  <xacro:arg name="gripper_connection_type" default="serial" />
+
+  <xacro:property name="initial_positions_file" default="$(arg initial_positions_file)"/>
+  <xacro:property name="is_sim_gazebo" value="$(arg sim_gazebo)"/>
+  <xacro:property name="is_sim_ignition" value="$(arg sim_ignition)"/>
+
+  <!-- ==================== -->
+  <!-- PERMANENT GROUND PLANE -->
+  <!-- ==================== -->
+  <link name="world" />
+
+  <link name="ground_plane">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="2.0 2.0 0.05"/>
+      </geometry>
+      <material name="Grey">
+        <color rgba="0.7 0.7 0.7 0.5"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="2.0 2.0 0.05"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="ground_plane_joint" type="fixed">
+    <parent link="world"/>
+    <child link="ground_plane"/>
+    <origin xyz="0 0 -0.025" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ==================== -->
+  <!-- UR ROBOT MACRO       -->
+  <!-- ==================== -->
+  <xacro:ur_robot
+    name="$(arg name)"
+    tf_prefix="$(arg tf_prefix)"
+    parent="world"
+    joint_limits_parameters_file="$(arg joint_limit_params)"
+    kinematics_parameters_file="$(arg kinematics_params)"
+    physical_parameters_file="$(arg physical_params)"
+    visual_parameters_file="$(arg visual_params)"
+    transmission_hw_interface="$(arg transmission_hw_interface)"
+    safety_limits="$(arg safety_limits)"
+    safety_pos_margin="$(arg safety_pos_margin)"
+    safety_k_position="$(arg safety_k_position)"
+    use_fake_hardware="$(arg use_fake_hardware)"
+    fake_sensor_commands="$(arg fake_sensor_commands)"
+    sim_gazebo="$(arg sim_gazebo)"
+    sim_ignition="$(arg sim_ignition)"
+    headless_mode="$(arg headless_mode)"
+    initial_positions="${xacro.load_yaml(initial_positions_file)}"
+    use_tool_communication="$(arg use_tool_communication)"
+    tool_voltage="$(arg tool_voltage)"
+    tool_parity="$(arg tool_parity)"
+    tool_baud_rate="$(arg tool_baud_rate)"
+    tool_stop_bits="$(arg tool_stop_bits)"
+    tool_rx_idle_chars="$(arg tool_rx_idle_chars)"
+    tool_tx_idle_chars="$(arg tool_tx_idle_chars)"
+    tool_device_name="$(arg tool_device_name)"
+    tool_tcp_port="$(arg tool_tcp_port)"
+    robot_ip="$(arg robot_ip)"
+    script_filename="$(arg script_filename)"
+    output_recipe_filename="$(arg output_recipe_filename)"
+    input_recipe_filename="$(arg input_recipe_filename)"
+    reverse_ip="$(arg reverse_ip)"
+    script_command_port="$(arg script_command_port)"
+    reverse_port="$(arg reverse_port)"
+    script_sender_port="$(arg script_sender_port)"
+    trajectory_port="$(arg trajectory_port)"
+  >
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:ur_robot>
+
+  <!-- ==================== -->
+  <!-- OnRobot RG2 GRIPPER  -->
+  <!-- ==================== -->
+  <xacro:include filename="$(find onrobot_description)/urdf/onrobot_macro.xacro"/>
+  <xacro:onrobot 
+    onrobot_type="rg2" 
+    prefix=""
+    sim_gazebo="$(arg sim_gazebo)"
+    use_fake_hardware="$(arg use_fake_gripper)"
+    connection_type="$(arg gripper_connection_type)" />
+
+  <!-- Connect gripper to robot flange -->
+  <joint name="onrobot_base_link_joint" type="fixed">
+    <parent link="tool0" />
+    <child link="onrobot_base_link" />
+    <origin xyz="0 0 0" rpy="0 0 ${-pi/2}" />
+  </joint>
+
+  <!-- ==================== -->
+  <!-- CABLE CONNECTOR COLLISION SPHERES (to match SRDF) -->
+  <!-- ==================== -->
+  <link name="cable_connector_0">
+    <collision>
+      <geometry><sphere radius="0.03"/></geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </collision>
+  </link>
+  <joint name="cable_connector_0_joint" type="fixed">
+    <parent link="onrobot_base_link"/>
+    <child link="cable_connector_0"/>
+    <origin xyz="0 -0.035 0.01" rpy="0 0 0"/>
+  </joint>
+
+  <link name="cable_connector_1">
+    <collision>
+      <geometry><sphere radius="0.03"/></geometry>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </collision>
+  </link>
+  <joint name="cable_connector_1_joint" type="fixed">
+    <parent link="onrobot_base_link"/>
+    <child link="cable_connector_1"/>
+    <origin xyz="0.03 0.0 -0.03" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ==================== -->
+  <!-- SRDF COMPATIBILITY: DISABLE COLLISIONS -->
+  <!-- ==================== -->
+  <passive_joints>
+    <joint name="onrobot_base_link_joint" />
+  </passive_joints>
+
+  <disable_collisions>
+    <link1>left_outer_knuckle</link1>
+    <link2>left_inner_knuckle</link2>
+    <reason>Gripper finger self-collision allowed</reason>
+  </disable_collisions>
+  <disable_collisions>
+    <link1>left_inner_knuckle</link1>
+    <link2>left_inner_finger</link2>
+    <reason>Gripper finger self-collision allowed</reason>
+  </disable_collisions>
+  <disable_collisions>
+    <link1>right_outer_knuckle</link1>
+    <link2>right_inner_knuckle</link2>
+    <reason>Gripper finger self-collision allowed</reason>
+  </disable_collisions>
+  <disable_collisions>
+    <link1>right_inner_knuckle</link1>
+    <link2>right_inner_finger</link2>
+    <reason>Gripper finger self-collision allowed</reason>
+  </disable_collisions>
+  <!-- Add cable connector collisions as in Tony's SRDF (if needed) -->
+  <disable_collisions>
+    <link1>cable_connector_0</link1>
+    <link2>cable_connector_1</link2>
+    <reason>Allow cable connectors to collide with each other</reason>
+  </disable_collisions>
+  <!-- Avoid collisions between cable connectors and the robot arm -->
+  <disable_collisions>
+    <link1>cable_connector_0</link1>
+    <link2>forearm_link</link2>
+    <reason>Cable connector may touch forearm</reason>
+  </disable_collisions>
+  <disable_collisions>
+    <link1>cable_connector_1</link1>
+    <link2>forearm_link</link2>
+    <reason>Cable connector may touch forearm</reason>
+  </disable_collisions>
 
 </robot>

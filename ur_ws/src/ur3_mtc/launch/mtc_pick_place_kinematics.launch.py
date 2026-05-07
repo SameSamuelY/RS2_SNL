@@ -2,6 +2,8 @@
 import os
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, ExecuteProcess, TimerAction
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (
     Command,
@@ -13,7 +15,6 @@ from launch.substitutions import (
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.parameter_descriptions import ParameterValue
-
 from ur_moveit_config.launch_common import load_yaml
 
 
@@ -34,6 +35,12 @@ def generate_launch_description():
     safety_pos_margin = LaunchConfiguration("safety_pos_margin", default='0.15')
     safety_k_position = LaunchConfiguration("safety_k_position", default='20')
     prefix = LaunchConfiguration("prefix", default='""')
+
+    description_package = LaunchConfiguration("ur_description_package", default='ur_description')
+    description_file = LaunchConfiguration("description_file", default='ur_onrobot.urdf.xacro')
+    _publish_robot_description_semantic = LaunchConfiguration("publish_robot_description_semantic")
+    moveit_config_package = LaunchConfiguration("moveit_config_package", default='ur_moveit_config')
+    moveit_config_file = LaunchConfiguration("moveit_config_file", default='ur_onrobot.srdf.xacro')
     
     # 1. Include the main bringup launch
     bringup = IncludeLaunchDescription(
@@ -49,6 +56,8 @@ def generate_launch_description():
             'connection_type': connection_type,
             'use_fake_hardware': 'false', # Force real hardware for MTC testing
             'headless_mode': 'false', # Force RViz for MTC testing
+            'description_file': description_file,
+            'moveit_config_file': moveit_config_file,
         }.items()
     )
     
@@ -80,10 +89,21 @@ def generate_launch_description():
             ExecuteProcess(
                 cmd=['ros2', 'control', 'switch_controllers', '--activate', 'scaled_joint_trajectory_controller'],
                 output='screen'
+            ),
+            ExecuteProcess(
+                cmd=['ros2', 'control', 'switch_controllers', '--activate', 'finger_width_trajectory_controller'],
+                output='screen'
             )
         ]
     )
-    
+
+    spawn_gripper_controller = Node(
+    package='controller_manager',
+    executable='spawner',
+    arguments=['finger_width_trajectory_controller'],
+    output='screen'
+    )
+
 
 
     joint_limit_params = PathJoinSubstitution(
@@ -103,11 +123,10 @@ def generate_launch_description():
         PathJoinSubstitution([FindExecutable(name="xacro")]),
         " ",
         PathJoinSubstitution(
-            [FindPackageShare("ur_description"), "urdf", "ur.urdf.xacro"]
+            [FindPackageShare(description_package), "urdf", description_file]
         ),
         " ",
-        "robot_ip:=",
-        robot_ip,
+        "robot_ip:=xxx.yyy.zzz.www",
         " ",
         "joint_limit_params:=",
         joint_limit_params,
@@ -130,7 +149,7 @@ def generate_launch_description():
         "safety_k_position:=",
         safety_k_position,
         " ",
-        "name:=ur",
+        "name:=ur_onrobot",
         " ",
         "ur_type:=",
         ur_type,
@@ -148,17 +167,18 @@ def generate_launch_description():
         prefix,
         " ",
     ])
-    robot_description = {"robot_description": robot_description_content}
+    robot_description = {"robot_description": ParameterValue(robot_description_content, value_type=str)}
+
 
     robot_description_semantic_content = Command([
         PathJoinSubstitution([FindExecutable(name="xacro")]),
         " ",
         PathJoinSubstitution(
-            [FindPackageShare("ur_moveit_config"), "srdf", "ur.srdf.xacro"]
+            [FindPackageShare(moveit_config_package), "srdf", moveit_config_file]
         ),
         " ",
-        "name:==t",
-        "ur",
+        "name:=",
+        "ur_onrobot",
         " ",
         "prefix:=",
         prefix,
@@ -166,6 +186,10 @@ def generate_launch_description():
     ])
     robot_description_semantic = {
         "robot_description_semantic": robot_description_semantic_content
+    }
+
+    publish_robot_description_semantic = {
+        "publish_robot_description_semantic": _publish_robot_description_semantic
     }
 
     robot_description_kinematics = {
@@ -226,5 +250,6 @@ def generate_launch_description():
         stop_program,
         start_program,
         activate_controller,
+        spawn_gripper_controller, 
         mtc_node,
     ])

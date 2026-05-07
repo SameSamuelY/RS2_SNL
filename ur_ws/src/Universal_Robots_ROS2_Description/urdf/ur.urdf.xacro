@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
-<robot xmlns:xacro="http://wiki.ros.org/xacro" name="ur">
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="ur_onrobot">
   <!-- robot name parameter -->
-  <xacro:arg name="name" default="ur"/>
+  <xacro:arg name="name" default="ur_onrobot"/>
   <!-- import main macro -->
   <xacro:include filename="$(find ur_description)/urdf/ur_macro.xacro"/>
 
@@ -20,7 +20,7 @@
   <xacro:arg name="safety_k_position" default="20"/>
   <!-- ros2_control related parameters -->
   <xacro:arg name="headless_mode" default="false" />
-  <xacro:arg name="robot_ip" default="0.0.0.0" />
+  <xacro:arg name="robot_ip" default="192.168.56.101" />
   <xacro:arg name="script_filename" default=""/>
   <xacro:arg name="output_recipe_filename" default=""/>
   <xacro:arg name="input_recipe_filename" default=""/>
@@ -132,17 +132,20 @@
   </xacro:ur_robot>
 
   <!-- OnRobot gripper -->
-  <xacro:include filename="$(find onrobot_description)/urdf/onrobot_macro.xacro" />
-  <xacro:onrobot 
+  <xacro:include filename="$(find onrobot_description)/urdf/onrobot_macro.xacro"/>
+  <xacro:onrobot
+
     onrobot_type="rg2" 
     prefix=""
     sim_gazebo="$(arg sim_gazebo)"
     use_fake_hardware="$(arg use_fake_gripper)"
     connection_type="$(arg gripper_connection_type)" />
+
+  <!-- Connect the OnRobot to the UR robot -->
   <joint name="onrobot_base_link_joint" type="fixed">
-    <origin xyz="0 0 0" rpy="0 0 0" />
     <parent link="tool0" />
     <child link="onrobot_base_link" />
+    <origin xyz="0 0 0" rpy="0 0 ${-pi/2}" />
   </joint>
 
   <passive_joints>

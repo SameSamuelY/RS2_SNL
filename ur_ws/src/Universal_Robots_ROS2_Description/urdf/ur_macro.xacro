@@ -189,7 +189,8 @@
             iyz="${shoulder_inertia_iyz}"
             izz="${shoulder_inertia_izz}"
         />
-      </inertial>    </link>
+      </inertial>
+    </link>
     <link name="${tf_prefix}upper_arm_link">
       <visual>
         <origin xyz="0 0 ${shoulder_offset}" rpy="${pi/2} 0 ${-pi/2}"/>

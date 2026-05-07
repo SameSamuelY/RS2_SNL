@@ -255,6 +255,7 @@ private:
         "ur_onrobot_gripper"
       );
     rclcpp::sleep_for(std::chrono::milliseconds(100));
+    gripper_group->setGoalJointTolerance(0.02);
     gripper_group->setJointValueTarget("finger_width", width_m);
 
     moveit::planning_interface::MoveGroupInterface::Plan plan;

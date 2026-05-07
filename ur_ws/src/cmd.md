@@ -4,30 +4,18 @@ cd ~/git/RS2_SNL/ur_ws/
 colcon build --symlink-install
 source install/setup.bash
 
-# colcon build (ur3 urdf)
+# colcon build
 cd ~/git/RS2_SNL/ur_ws/
 colcon build --packages-select ur_description --symlink-install
-source install/setup.bash
-
-# colcon build (ur3_planner)
-cd ~/git/RS2_SNL/ur_ws/
-colcon build --packages-select ur3_planner --symlink-install
-source install/setup.bash
-
-# colcon build (gui)
-cd ~/git/RS2_SNL/src/
+colcon build --packages-select ur_robot_driver --symlink-install
+colcon build --packages-select ur_moveit_config --symlink-install
 colcon build --packages-select gui_control --symlink-install
-source install/setup.bash
-
-# colcon build (mtc)
-cd ~/git/RS2_SNL/ur_ws/
-rosdep install --from-paths src --ignore-src -r -y
+colcon build --packages-select ur3_planner --symlink-install
 colcon build --packages-select ur3_mtc --symlink-install
 source install/setup.bash
 
 # Source
 source ~/git/RS2_SNL/ur_ws/install/setup.bash
-source ~/git/RS2_SNL/ur_ws/src/moveit2_tutorials_ur_onrobot/ur_onrobot_mtc/install/setup.bash
 source ~/git/RS2_SNL/src/install/setup.bash
 
 # Docker 
@@ -36,9 +24,53 @@ http://localhost:6080/vnc.html
 # Initialise docker (if not)
 sudo service docker start
 
-# Activate controller
+# Docker
+ros2 run ur_client_library start_ursim.sh \
+  -m ur3 \
+  -f "-p 5900:5900 -p 6080:6080 -p 30001-30004:30001-30004 -p 29999:29999"
+
+# bringup
+ros2 launch ur3_planner bringup.launch.py \
+    robot_ip:=192.168.56.101 \
+    use_fake_gripper:=true \
+    gripper_connection_type:=serial \
+    rviz:=true
+
+# Driver (standalone without bringup)
+ros2 launch ur_robot_driver ur_control.launch.py \
+    name:=ur_onrobot \
+    robot_ip:=192.168.56.101 \
+    ur_type:=ur3 \
+    description_file:=ur_onrobot.urdf.xacro \
+    moveit_config_file:=ur_onrobot.srdf.xacro \
+    launch_rviz:=false \
+    use_fake_gripper:=true \
+    gripper_connection_type:=serial
+# moveit (standalone without bringup)
+ros2 launch ur_moveit_config ur_moveit.launch.py \
+    name:=ur_onrobot \
+    ur_type:=ur3 \
+    launch_rviz:=true \
+    description_file:=ur_onrobot.urdf.xacro \
+    moveit_config_file:=ur_onrobot.srdf.xacro
+
+# mtc
+ros2 launch ur3_mtc mtc_pick_place_kinematics.launch.py
+
+
+# error log stream
+sudo apt install ros-humble-rqt-console
+ros2 run rqt_console rqt_console
+
+# gripper & controllers
 ros2 control list_controllers
 ros2 control switch_controllers --activate scaled_joint_trajectory_controller
+ros2 run controller_manager spawner finger_width_trajectory_controller
+ros2 topic pub --once /ur3_gripper_cmd std_msgs/msg/Float64MultiArray "{data: [0.11]}"
+
+#
+#
+#
 
 # Terminal 1 Docker
 ros2 run ur_client_library start_ursim.sh \
@@ -48,7 +80,11 @@ ros2 run ur_client_library start_ursim.sh \
 # Terminal 2-4 bringup.launch (Sim Default)
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \
-    connection_type:=serial
+    gripper_connection_type:=serial \
+    ur_type:=ur3 \
+    name:=ur_onrobot \
+    description_file:=ur.urdf.xacro \
+    moveit_config_file:=ur.srdf.xacro
 
 
 # Terminal 2-4 bringup.launch (Real Default)
@@ -68,28 +104,9 @@ ros2 launch ur3_planner bringup.launch.py \
     ignore_if_busy:=false
 
 
-# gripper driver
-ros2 control list_controllers
-ros2 action list | grep execute_task_solution
-
-ros2 run controller_manager spawner finger_width_trajectory_controller
-
-ros2 topic pub --once /ur3_gripper_cmd std_msgs/msg/Float64MultiArray "{data: [0.11]}"
-
-ros2 run ur3_mtc mtc_node
-
-ros2 launch ur3_mtc mtc_pick_place.launch.py
-
-ros2 action list | grep execute_task_solution
-
-chmod +x ~/git/RS2_SNL/ur_ws/src/ur3_mtc/scripts/set_kinematics.py
-
-ros2 param get /move_group robot_description_kinematics
-
-ros2 run ur3_mtc mtc_cartesian --ros-args \
-  -p pick_pose.position.x:=0.3 -p pick_pose.position.y:=-0.162 -p pick_pose.position.z:=0.05 \
-  -p place_pose.position.x:=0.0 -p place_pose.position.y:=0.3 -p place_pose.position.z:=0.05
-
+#
+#
+#
 
 # Terminal 2 Driver (Real Connection)
 ros2 launch ur_robot_driver ur_control.launch.py ur_type:=ur3 robot_ip:=192.168.0.195 launch_rviz:=false

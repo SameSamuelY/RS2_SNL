@@ -7,12 +7,14 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     # Configuration arguments
+    name = LaunchConfiguration("name", default="ur_onrobot")
     robot_ip = LaunchConfiguration('robot_ip', default='192.168.56.101')
     calibration_file = LaunchConfiguration('calibration_file', 
         default='~/git/RS2_SNL/ur_ws/src/ur3_planner/src/ur3_calibration.yaml')
     ur_type = LaunchConfiguration('ur_type', default='ur3')
     planner_id = LaunchConfiguration('planner_id', default='RRTConnectkConfigDefault')
     # launch_rviz = LaunchConfiguration('launch_rviz', default='true')
+    rviz = LaunchConfiguration('rviz', default='true')
     trajectory_velocity_scaling = LaunchConfiguration('trajectory_velocity_scaling', default='0.1')
     trajectory_acceleration_scaling = LaunchConfiguration('trajectory_acceleration_scaling', default='0.1')
     use_fake_hardware = LaunchConfiguration('use_fake_hardware', default='false')
@@ -22,6 +24,8 @@ def generate_launch_description():
     ignore_if_busy = LaunchConfiguration('ignore_if_busy', default='true')
     initial_joint_controller = LaunchConfiguration("initial_joint_controller", default="scaled_joint_trajectory_controller")
     ip_address = LaunchConfiguration('ip_address', default='192.168.1.1')
+    description_file = LaunchConfiguration('description_file', default='ur_onrobot.urdf.xacro')
+    moveit_config_file = LaunchConfiguration('moveit_config_file', default='ur_onrobot.srdf.xacro')
 
     # 1. UR Driver
     ur_driver = IncludeLaunchDescription(
@@ -33,7 +37,7 @@ def generate_launch_description():
             ])
         ]),
         launch_arguments={
-            'name': 'ur',
+            'name': name,
             'robot_ip': robot_ip,
             'calibration_file': calibration_file,
             'ur_type': ur_type,
@@ -41,11 +45,11 @@ def generate_launch_description():
             'launch_rviz': 'false', # Default: false
             'trajectory_velocity_scaling': trajectory_velocity_scaling,
             'trajectory_acceleration_scaling': trajectory_acceleration_scaling,
-            'use_fake_gripper': 'true', # Force fake gripper for now to avoid issues with real gripper connection
+            'use_fake_gripper': use_fake_gripper,
             'gripper_connection_type': gripper_connection_type,
             'headless_mode': headless_mode,
-            # 'description_file': 'ur.urdf.xacro', 
-            'description_file': 'ur_onrobot.urdf.xacro', # Use the URDF with the gripper attached
+            'description_file': description_file,
+            'moveit_config_file': moveit_config_file,
         }.items()
     )
 
@@ -59,10 +63,10 @@ def generate_launch_description():
             ])
         ]),
         launch_arguments={
+            'name': name,
             'ur_type': ur_type,
-            'launch_rviz': 'true', # Default: true
-            # 'description_file': 'ur.urdf.xacro', 
-            'description_file': 'ur_onrobot.urdf.xacro', # Use the URDF with the gripper attached
+            'launch_rviz': rviz,
+            'description_file': description_file, # Use the URDF with the gripper attached
         }.items()
     )
 
@@ -108,32 +112,13 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 7. Gripper driver
-    gripper_driver = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([
-            PathJoinSubstitution([
-                FindPackageShare('onrobot_driver'),
-                'launch',
-                'onrobot_control.launch.py'
-            ])
-        ]),
-        launch_arguments={
-            'onrobot_type': 'rg2',
-            'connection_type': gripper_connection_type,
-            'use_fake_hardware': 'true',   # force fake hardware for gripper
-            'ip_address': ip_address,
-            'launch_rviz': 'false',
-        }.items()
-    )
-
     return LaunchDescription([
         ur_driver,
-        spawn_gripper_traj_controller,
         moveit,
         listener_node,
-        activate_controller,
+        spawn_gripper_traj_controller,
+        spawn_gripper_controller,
+        # activate_controller,
         gui,
-        # spawn_gripper_controller,
-        # gripper_driver,
     ])
 

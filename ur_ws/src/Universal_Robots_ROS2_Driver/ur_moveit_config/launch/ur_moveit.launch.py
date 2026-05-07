@@ -54,6 +54,7 @@ from launch.substitutions import (
 def launch_setup(context, *args, **kwargs):
 
     # Initialize Arguments
+    name = LaunchConfiguration("name", default="ur_onrobot")
     ur_type = LaunchConfiguration("ur_type")
     onrobot_type = LaunchConfiguration("onrobot_type")
     safety_limits = LaunchConfiguration("safety_limits")
@@ -116,7 +117,7 @@ def launch_setup(context, *args, **kwargs):
             safety_k_position,
             " ",
             "name:=",
-            "ur",
+            name,
             " ",
             "ur_type:=",
             ur_type,
@@ -135,7 +136,7 @@ def launch_setup(context, *args, **kwargs):
             " ",
         ]
     )
-    robot_description = {"robot_description": robot_description_content}
+    robot_description = {"robot_description": ParameterValue(robot_description_content, value_type=str)}
 
     # MoveIt Configuration
     robot_description_semantic_content = Command(
@@ -147,16 +148,14 @@ def launch_setup(context, *args, **kwargs):
             ),
             " ",
             "name:=",
-            # Also ur_type parameter could be used but then the planning group names in yaml
-            # configs has to be updated!
-            "ur",
+            name,
             " ",
             "prefix:=",
             prefix,
             " ",
         ]
     )
-    robot_description_semantic = {"robot_description_semantic": robot_description_semantic_content}
+    robot_description_semantic = {"robot_description_semantic": ParameterValue(robot_description_semantic_content, value_type=str)}
 
     publish_robot_description_semantic = {
         "publish_robot_description_semantic": _publish_robot_description_semantic
@@ -362,6 +361,7 @@ def generate_launch_description():
             "moveit_config_file",
             default_value="ur.srdf.xacro",
             description="MoveIt SRDF/XACRO description file with the robot.",
+            choices=["ur.srdf.xacro","ur_onrobot.srdf.xacro"],
         )
     )
     declared_arguments.append(
