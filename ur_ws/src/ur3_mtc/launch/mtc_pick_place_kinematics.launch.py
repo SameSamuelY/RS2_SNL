@@ -42,6 +42,19 @@ def generate_launch_description():
     moveit_config_package = LaunchConfiguration("moveit_config_package", default='ur_moveit_config')
     moveit_config_file = LaunchConfiguration("moveit_config_file", default='ur_onrobot.srdf.xacro')
     
+    # === Pick and place positions ===
+    pick_x = LaunchConfiguration('pick_x', default='0.3')
+    pick_y = LaunchConfiguration('pick_y', default='-0.2')
+    pick_z = LaunchConfiguration('pick_z', default='0.03')
+    place_x = LaunchConfiguration('place_x', default='-0.3')
+    place_y = LaunchConfiguration('place_y', default='0.2')
+    place_z = LaunchConfiguration('place_z', default='-0.5')
+    place_qx = LaunchConfiguration('place_qx', default='0.0')
+    place_qy = LaunchConfiguration('place_qy', default='0.0')
+    place_qz = LaunchConfiguration('place_qz', default='0.0')
+    place_qw = LaunchConfiguration('place_qw', default='1.0')
+
+
     # 1. Include the main bringup launch
     bringup = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
@@ -64,7 +77,7 @@ def generate_launch_description():
     # 2. Start the External Control program via dashboard
     # Stop the program (if running) and then start it
     stop_program = TimerAction(
-        period=5.0,
+        period=1.0,
         actions=[
             ExecuteProcess(
                 cmd=['ros2', 'service', 'call', '/dashboard_client/stop', 'std_srvs/srv/Trigger', '{}'],
@@ -73,7 +86,7 @@ def generate_launch_description():
         ]
     )
     start_program = TimerAction(
-        period=6.0,  # wait 1 second after stop
+        period=2.0,  # wait 1 second after stop
         actions=[
             ExecuteProcess(
                 cmd=['ros2', 'service', 'call', '/dashboard_client/play', 'std_srvs/srv/Trigger', '{}'],
@@ -82,30 +95,6 @@ def generate_launch_description():
         ]
     )
     
-    # 3. Activate trajectory controller
-    activate_controller = TimerAction(
-        period=10.0,
-        actions=[
-            ExecuteProcess(
-                cmd=['ros2', 'control', 'switch_controllers', '--activate', 'scaled_joint_trajectory_controller'],
-                output='screen'
-            ),
-            ExecuteProcess(
-                cmd=['ros2', 'control', 'switch_controllers', '--activate', 'finger_width_trajectory_controller'],
-                output='screen'
-            )
-        ]
-    )
-
-    spawn_gripper_controller = Node(
-    package='controller_manager',
-    executable='spawner',
-    arguments=['finger_width_trajectory_controller'],
-    output='screen'
-    )
-
-
-
     joint_limit_params = PathJoinSubstitution(
         [FindPackageShare("ur_description"), "config", ur_type, "joint_limits.yaml"]
     )
@@ -225,9 +214,9 @@ def generate_launch_description():
         ompl_planning_pipeline_config["ompl"].update(ompl_yaml)
 
 
-    # 5. Run the MTC pick-and-place node
+    # 3. Run the MTC pick-and-place node
     mtc_node = TimerAction(
-        period=16.0,
+        period=3.0,
         actions=[
             Node(
                 package='ur3_mtc',
@@ -240,16 +229,38 @@ def generate_launch_description():
                     robot_description_kinematics,
                     robot_description_planning,
                     ompl_planning_pipeline_config,
+                    {'pick_x': pick_x},
+                    {'pick_y': pick_y},
+                    {'pick_z': pick_z},
+                    {'place_x': place_x},
+                    {'place_y': place_y},
+                    {'place_z': place_z},
+                    {'place_qx': place_qx},
+                    {'place_qy': place_qy},
+                    {'place_qz': place_qz},
+                    {'place_qw': place_qw},
                 ]
             )
         ]
     )
+
+    # 4. Activate ur scaled joint trajectory controller
+    activate_ur_controller = ExecuteProcess(
+        cmd=['ros2', 'control', 'switch_controllers', '--activate', 'scaled_joint_trajectory_controller'],
+        output='screen'
+    )
+    # 5. Activate gripper trajectory controller
+    activate_gripper_controller = ExecuteProcess(
+        cmd=['ros2', 'control', 'switch_controllers', '--activate', 'finger_width_trajectory_controller'],
+        output='screen'
+    )
+
     
     return LaunchDescription([
         # bringup,
         stop_program,
         start_program,
-        activate_controller,
-        spawn_gripper_controller, 
         mtc_node,
+        activate_ur_controller,
+        activate_gripper_controller,
     ])

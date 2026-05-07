@@ -57,6 +57,17 @@ ros2 launch ur_moveit_config ur_moveit.launch.py \
 # mtc
 ros2 launch ur3_mtc mtc_pick_place_kinematics.launch.py
 
+ros2 launch ur3_mtc mtc_pick_place_kinematics.launch.py \
+    pick_x:=-0.1 pick_y:=-0.1 pick_z:=0.05 \
+    place_x:=0.1 place_y:=0.1 place_z:=0.05 \
+    place_qx:=0.0 place_qy:=0.0 place_qz:=0.0 place_qw:=1.0
+
+ros2 launch ur3_mtc mtc_pick_place_kinematics.launch.py \
+    pick_x:=-0.2 pick_y:=-0.2 pick_z:=0.05 \
+    place_x:=0.2 place_y:=0.2 place_z:=0.05 \
+    place_qx:=0.0 place_qy:=0.0 place_qz:=0.0 place_qw:=1.0
+
+
 
 # error log stream
 sudo apt install ros-humble-rqt-console

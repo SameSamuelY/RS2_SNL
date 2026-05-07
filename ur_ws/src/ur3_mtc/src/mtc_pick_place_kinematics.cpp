@@ -49,6 +49,10 @@ private:
 
   double object_radius_;
   double object_width_;
+
+  double pick_x_, pick_y_, pick_z_;
+  double place_x_, place_y_, place_z_;
+  double place_qx_, place_qy_, place_qz_, place_qw_;
 };
 
 rclcpp::node_interfaces::NodeBaseInterface::SharedPtr MTCPickPlaceKinematicsNode::getNodeBaseInterface()
@@ -59,6 +63,20 @@ rclcpp::node_interfaces::NodeBaseInterface::SharedPtr MTCPickPlaceKinematicsNode
 MTCPickPlaceKinematicsNode::MTCPickPlaceKinematicsNode(const rclcpp::NodeOptions &options)
     : node_{std::make_shared<rclcpp::Node>("mtc_pick_place_kinematics", options)}
 {
+  node_->get_parameter_or<double>("pick_x", pick_x_, -0.3);
+  node_->get_parameter_or<double>("pick_y", pick_y_, -0.3);
+  node_->get_parameter_or<double>("pick_z", pick_z_, 0.05);
+  node_->get_parameter_or<double>("place_x", place_x_, 0.3);
+  node_->get_parameter_or<double>("place_y", place_y_, 0.3);
+  node_->get_parameter_or<double>("place_z", place_z_, 0.05);
+  node_->get_parameter_or<double>("place_qx", place_qx_, 0.0);
+  node_->get_parameter_or<double>("place_qy", place_qy_, 0.0);
+  node_->get_parameter_or<double>("place_qz", place_qz_, 0.0);
+  node_->get_parameter_or<double>("place_qw", place_qw_, 0.0);
+
+  RCLCPP_INFO(LOGGER, "Pick  position: (%.2f, %.2f, %.2f)", pick_x_, pick_y_, pick_z_);
+  RCLCPP_INFO(LOGGER, "Place position: (%.2f, %.2f, %.2f)", place_x_, place_y_, place_z_);
+  RCLCPP_INFO(LOGGER, "Place orientation: (%.2f, %.2f, %.2f, %.2f)", place_qx_, place_qy_, place_qz_, place_qw_);
 }
 
 void MTCPickPlaceKinematicsNode::setupPlanningScene()
@@ -68,19 +86,19 @@ void MTCPickPlaceKinematicsNode::setupPlanningScene()
   object.header.frame_id = "world";
   object.primitives.resize(1);
   object.primitives[0].type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-  object.primitives[0].dimensions = {0.1, 0.03}; // height 0.1 m, radius 0.03 m
+  object.primitives[0].dimensions = {0.05, 0.025}; // height 0.05 m, radius 0.025 m
 
   object_radius_ = object.primitives[0].dimensions[1];
   object_width_ = 2 * object_radius_ + 0.02;
 
   geometry_msgs::msg::Pose pose;
-  pose.position.x = 0.3;
-  pose.position.y = -0.1;
-  pose.position.z = 0.03;
-  pose.orientation.x = 0;
-  pose.orientation.y = 1;
-  pose.orientation.z = 0;
-  pose.orientation.w = 1;
+  pose.position.x = pick_x_;
+  pose.position.y = pick_y_;
+  pose.position.z = pick_z_;
+  pose.orientation.x = 0.0;
+  pose.orientation.y = 0.0;
+  pose.orientation.z = 0.0;
+  pose.orientation.w = 1.0;
   object.primitive_poses.push_back(pose);
   object.operation = object.ADD;
 
@@ -163,13 +181,12 @@ mtc::Task MTCPickPlaceKinematicsNode::createTask()
   auto cartesian_planner = std::make_shared<mtc::solvers::CartesianPath>();
   cartesian_planner->setMaxVelocityScalingFactor(0.1);
   cartesian_planner->setMaxAccelerationScalingFactor(0.1);
-  cartesian_planner->setStepSize(.005);
+  cartesian_planner->setStepSize(.001);
 
   auto sampling_planner = std::make_shared<mtc::solvers::PipelinePlanner>(node_);
   sampling_planner->setPlannerId("RRTConnectkConfigDefault");
   sampling_planner->setMaxVelocityScalingFactor(0.1);
   sampling_planner->setMaxAccelerationScalingFactor(0.1);
-
 
   // Helper for arm stages
   auto add_arm_stage = [&](const std::string &name, const std::map<std::string, double> &joints)
@@ -250,12 +267,13 @@ mtc::Task MTCPickPlaceKinematicsNode::createTask()
       stage->properties().set("marker_ns", "approach_object");
       stage->properties().set("link", hand_frame);
       stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
-      stage->setMinMaxDistance(0.05, 0.1);  
+      stage->setMinMaxDistance(0.01, 0.15);
 
       // Set hand forward direction
       geometry_msgs::msg::Vector3Stamped vec;
-      vec.header.frame_id = hand_frame;
-      vec.vector.z = 1.0;
+      // vec.header.frame_id = hand_frame;
+      vec.header.frame_id = "world";
+      vec.vector.z = -1.0;
       stage->setDirection(vec);
       grasp->insert(std::move(stage));
     }
@@ -271,10 +289,22 @@ mtc::Task MTCPickPlaceKinematicsNode::createTask()
       stage->setMonitoredStage(current_state_ptr); // Hook into current state
 
       Eigen::Isometry3d grasp_frame_transform = Eigen::Isometry3d::Identity();
-      Eigen::Quaterniond q = Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitX()) *
-                             Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitY()) *
-                             Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitZ());
-      grasp_frame_transform.linear() = q.matrix();
+      Eigen::Quaterniond q_x = 
+      (
+        // Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()) *
+        Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitZ())
+      );
+      Eigen::Quaterniond q_y = 
+      (
+        Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()) *
+        // Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitZ())
+      );
+      grasp_frame_transform.linear() = q_x.matrix();
+      RCLCPP_INFO(LOGGER, "q_x: (%.2f, %.2f, %.2f, %.2f)", q_x.x(), q_x.y(), q_x.z(), q_x.w());
+      RCLCPP_INFO(LOGGER, "q_y: (%.2f, %.2f, %.2f, %.2f)", q_y.x(), q_y.y(), q_y.z(), q_y.w());
+
 
       // Compute IK
       auto wrapper =
@@ -376,14 +406,14 @@ mtc::Task MTCPickPlaceKinematicsNode::createTask()
       stage->setObject("object");
 
       geometry_msgs::msg::PoseStamped target_pose_msg;
-      target_pose_msg.header.frame_id = "object";
-      // target_pose_msg.pose.position.x = -0.3;
-      // target_pose_msg.pose.position.y = 0.2;
-      target_pose_msg.pose.position.z = -0.5;
-      // target_pose_msg.pose.orientation.x = 0;
-      // target_pose_msg.pose.orientation.y = 1;
-      // target_pose_msg.pose.orientation.z = 0;
-      target_pose_msg.pose.orientation.w = 1;
+      target_pose_msg.header.frame_id = "world";
+      target_pose_msg.pose.position.x = place_x_;
+      target_pose_msg.pose.position.y = place_y_;
+      target_pose_msg.pose.position.z = place_z_;
+      target_pose_msg.pose.orientation.x = place_qx_;
+      target_pose_msg.pose.orientation.y = place_qy_;
+      target_pose_msg.pose.orientation.z = place_qz_;
+      target_pose_msg.pose.orientation.w = place_qw_;
       stage->setPose(target_pose_msg);
       stage->setMonitoredStage(attach_object_stage); // Hook into attach_object_stage
 
@@ -423,29 +453,29 @@ mtc::Task MTCPickPlaceKinematicsNode::createTask()
     }
 
     {
-      auto stage = std::make_unique<mtc::stages::MoveRelative>("retreat", cartesian_planner);
-      stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
-      stage->setMinMaxDistance(0.05, 0.2);
-      stage->setIKFrame(hand_frame);
-      stage->properties().set("marker_ns", "retreat");
+      // auto stage = std::make_unique<mtc::stages::MoveRelative>("retreat", cartesian_planner);
+      // stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
+      // stage->setMinMaxDistance(0.05, 0.2);
+      // stage->setIKFrame(hand_frame);
+      // stage->properties().set("marker_ns", "retreat");
 
-      // Set retreat direction
-      geometry_msgs::msg::Vector3Stamped vec;
-      vec.header.frame_id = "world";
-      vec.vector.z = 1.0;
-      stage->setDirection(vec);
-      place->insert(std::move(stage));
+      // // Set retreat direction
+      // geometry_msgs::msg::Vector3Stamped vec;
+      // vec.header.frame_id = "world";
+      // vec.vector.z = 1.0;
+      // stage->setDirection(vec);
+      // place->insert(std::move(stage));
     }
 
     task.add(std::move(place));
   }
 
   {
-    auto stage = std::make_unique<mtc::stages::MoveTo>("return home", joint_planner);
-    stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
-    stage->setGoal("up");
-    stage->setTimeout(15.0);
-    task.add(std::move(stage));
+    // auto stage = std::make_unique<mtc::stages::MoveTo>("return home", joint_planner);
+    // stage->properties().configureInitFrom(mtc::Stage::PARENT, {"group"});
+    // stage->setGoal("up");
+    // stage->setTimeout(15.0);
+    // task.add(std::move(stage));
   }
 
   return task;

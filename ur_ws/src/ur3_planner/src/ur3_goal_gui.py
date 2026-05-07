@@ -48,7 +48,7 @@ class Application:
         self.root = root
         self.node = node
         self.root.title("UR3 Control Panel")
-        self.root.geometry("450x500")
+        self.root.geometry("520x350")
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         # === Pose control frame ===

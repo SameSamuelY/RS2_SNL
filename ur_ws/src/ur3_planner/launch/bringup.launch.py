@@ -84,13 +84,33 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 4. Activate controller
-    activate_controller = ExecuteProcess(
-        cmd=['ros2', 'control', 'switch_controllers', '--activate', 'scaled_joint_trajectory_controller'],
+    # 4. Spawn gripper controllers
+    spawn_gripper_traj_controller = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['finger_width_trajectory_controller'],
+        output='screen'
+    )
+    # 5. Spawn gripper controller
+    spawn_gripper_controller = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['finger_width_controller'],
         output='screen'
     )
 
-    # 5. Goal Pose Publisher GUI
+    # 6. Activate ur scaled joint trajectory controller
+    activate_ur_controller = ExecuteProcess(
+        cmd=['ros2', 'control', 'switch_controllers', '--activate', 'scaled_joint_trajectory_controller'],
+        output='screen'
+    )
+    # 7. Activate gripper trajectory controller
+    activate_gripper_controller = ExecuteProcess(
+        cmd=['ros2', 'control', 'switch_controllers', '--activate', 'finger_width_trajectory_controller'],
+        output='screen'
+    )
+
+    # 8. Goal Pose Publisher GUI
     gui = ExecuteProcess(
         cmd=['python3', PathJoinSubstitution([
             FindPackageShare('ur3_planner'), 'src', 'ur3_goal_gui.py'
@@ -98,19 +118,7 @@ def generate_launch_description():
         output='screen'
     )
     
-    # 6. Spawn gripper controllers
-    spawn_gripper_controller = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=['finger_width_controller'],
-        output='screen'
-    )
-    spawn_gripper_traj_controller = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=['finger_width_trajectory_controller'],
-        output='screen'
-    )
+    
 
     return LaunchDescription([
         ur_driver,
@@ -118,7 +126,8 @@ def generate_launch_description():
         listener_node,
         spawn_gripper_traj_controller,
         spawn_gripper_controller,
-        # activate_controller,
+        activate_ur_controller,
+        activate_gripper_controller,
         gui,
     ])
 
