@@ -9,6 +9,8 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(moveit_task_constructor_core REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 
 add_executable(mtc_node src/mtc_node.cpp)
@@ -55,6 +57,25 @@ ament_target_dependencies(mtc_pick_place_kinematics
   shape_msgs
 )
 install(TARGETS mtc_pick_place_kinematics
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+add_executable(mtc_pick_place_listener src/mtc_pick_place_listener.cpp)
+target_include_directories(mtc_pick_place_listener PRIVATE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(mtc_pick_place_listener
+  rclcpp
+  moveit_msgs
+  moveit_ros_planning_interface
+  moveit_task_constructor_core
+  geometry_msgs
+  shape_msgs
+  std_msgs
+  nlohmann_json
+)
+install(TARGETS mtc_pick_place_listener
   DESTINATION lib/${PROJECT_NAME}
 )
 

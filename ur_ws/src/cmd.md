@@ -2,7 +2,7 @@ cd ~/git/RS2_SNL/ur_ws/
 # colcon build (all)
 cd ~/git/RS2_SNL/ur_ws/
 colcon build --symlink-install
-source install/setup.bash
+    source install/setup.bash
 
 # colcon build
 cd ~/git/RS2_SNL/ur_ws/
@@ -54,7 +54,7 @@ ros2 launch ur_moveit_config ur_moveit.launch.py \
     description_file:=ur_onrobot.urdf.xacro \
     moveit_config_file:=ur_onrobot.srdf.xacro
 
-# mtc
+# mtc k
 ros2 launch ur3_mtc mtc_pick_place_kinematics.launch.py
 
 ros2 launch ur3_mtc mtc_pick_place_kinematics.launch.py \
@@ -67,7 +67,20 @@ ros2 launch ur3_mtc mtc_pick_place_kinematics.launch.py \
     place_x:=0.2 place_y:=0.2 place_z:=0.05 \
     place_qx:=0.0 place_qy:=0.0 place_qz:=0.0 place_qw:=1.0
 
+# mtc listener
+ros2 launch ur3_mtc mtc_pick_place_listener.launch.py \
+    place_x:=0.2 place_y:=0.2 place_z:=0.15
 
+# mtc listener pub
+ros2 topic pub --once /detection_result std_msgs/msg/String "{data: '{\"objects\": [{\"position\": {\"x\": -0.2, \"y\": -0.2, \"z\": 0.05}}]}'}"
+
+ros2 topic pub --once /plan_goal_pose geometry_msgs/msg/PoseStamped \
+  "{header: {frame_id: 'world'}, pose: {position: {x: 0.3, y: 0.2, z: 0.15}, orientation: {w: 1.0}}}"
+
+ros2 service call /trigger_pick_and_place std_srvs/srv/Trigger '{}'
+
+# install 
+sudo apt install nlohmann-json3-dev
 
 # error log stream
 sudo apt install ros-humble-rqt-console

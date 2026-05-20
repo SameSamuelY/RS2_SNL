@@ -17,6 +17,8 @@
   <depend>moveit_task_constructor_visualization</depend>
   <depend>geometry_msgs</depend>
   <depend>shape_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>nlohmann-json</depend>
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
