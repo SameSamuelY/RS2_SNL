@@ -7,10 +7,10 @@
 #include <string>
 #include <nlohmann/json.hpp>
 
-
 #include <rclcpp/rclcpp.hpp>
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
+#include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/task_constructor/task.h>
 #include <moveit/task_constructor/solvers.h>
 #include <moveit/task_constructor/stages.h>
@@ -47,6 +47,7 @@ public:
     MTCPickPlaceListener(const rclcpp::NodeOptions &options);
     ~MTCPickPlaceListener();
     void addObjectToScene(double x, double y, double z);
+    void returnHome();
     void runPickAndPlace();
 
 private:
@@ -54,7 +55,7 @@ private:
     void detectionCallback(const std_msgs::msg::String::SharedPtr msg);
     void goalCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
     void triggerCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
-                            std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+                         std::shared_ptr<std_srvs::srv::Trigger::Response> res);
 
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr detection_sub_;
     std::mutex pick_pose_mutex_;
@@ -72,6 +73,16 @@ private:
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr trigger_srv_;
     std::atomic<bool> is_busy_{false};
     std::thread planner_thread_;
+    const int max_attempts_ = 2; // first attempt + one retry
+
+    struct Obstacle
+    {
+        double x, y, z;
+        double radius;     // for cylinder (or use box dimensions)
+        std::string shape; // "cylinder", "box"
+    };
+    std::vector<Obstacle> obstacles_;
+    std::mutex obstacles_mutex_;
 
     double pick_x_, pick_y_, pick_z_;
     double place_x_, place_y_, place_z_;
@@ -105,7 +116,7 @@ MTCPickPlaceListener::MTCPickPlaceListener(const rclcpp::NodeOptions &options)
     trigger_srv_ = this->create_service<std_srvs::srv::Trigger>(
         "/trigger_pick_and_place",
         std::bind(&MTCPickPlaceListener::triggerCallback, this,
-                std::placeholders::_1, std::placeholders::_2));
+                  std::placeholders::_1, std::placeholders::_2));
     RCLCPP_INFO(this->get_logger(), "Service 'trigger_pick_and_place' ready. Call to start pick-and-place.");
 }
 
@@ -143,10 +154,9 @@ void MTCPickPlaceListener::detectionCallback(const std_msgs::msg::String::Shared
         received_pick_y_ = obj["position"]["y"];
         received_pick_z_ = obj["position"]["z"];
         pick_pose_received_ = true;
-        RCLCPP_INFO(this->get_logger(), 
-            "Pick position: (%.3f, %.3f, %.3f). Waiting for trigger.", 
-            received_pick_x_, received_pick_y_, received_pick_z_);
-
+        RCLCPP_INFO(this->get_logger(),
+                    "Pick position: (%.3f, %.3f, %.3f). Waiting for trigger.",
+                    received_pick_x_, received_pick_y_, received_pick_z_);
     }
     catch (const std::exception &e)
     {
@@ -173,7 +183,8 @@ void MTCPickPlaceListener::triggerCallback(
     (void)req; // unused
 
     // Prevent concurrent executions
-    if (is_busy_.exchange(true)) {
+    if (is_busy_.exchange(true))
+    {
         res->success = false;
         res->message = "Already executing pick-and-place. Try later.";
         return;
@@ -182,7 +193,8 @@ void MTCPickPlaceListener::triggerCallback(
     // Check pick pose
     {
         std::lock_guard<std::mutex> lock(pick_pose_mutex_);
-        if (!pick_pose_received_) {
+        if (!pick_pose_received_)
+        {
             res->success = false;
             res->message = "No detection received yet. Please publish a detection first.";
             RCLCPP_WARN(this->get_logger(), "Trigger called but no detection pose available.");
@@ -217,14 +229,15 @@ void MTCPickPlaceListener::triggerCallback(
         }
     }
 
-    if (planner_thread_.joinable()) {
+    if (planner_thread_.joinable())
+    {
         planner_thread_.join();
     }
     // Launch new thread and store it (not detached)
-    planner_thread_ = std::thread([this]() {
+    planner_thread_ = std::thread([this]()
+                                  {
         runPickAndPlace();
-        is_busy_ = false;
-    });
+        is_busy_ = false; });
 
     res->success = true;
     res->message = "Starting pick-and-place asynchronously.";
@@ -241,8 +254,8 @@ void MTCPickPlaceListener::addObjectToScene(double x, double y, double z)
     object.primitives[0].dimensions = {0.05, 0.025}; // height 0.05 m, radius 0.025 m
 
     object_radius_ = object.primitives[0].dimensions[1];
-    // object_width_ = 2 * object_radius_ + 0.02;
-    object_width_ = 0.07;
+    object_width_ = 2 * object_radius_;
+    // object_width_ = 0.05;
 
     geometry_msgs::msg::Pose pose;
     pose.position.x = x;
@@ -255,13 +268,45 @@ void MTCPickPlaceListener::addObjectToScene(double x, double y, double z)
     object.primitive_poses.push_back(pose);
     object.operation = object.ADD;
 
+    moveit_msgs::msg::CollisionObject obstacle1;
+    obstacle1.id = "obstacle1";
+    obstacle1.header.frame_id = "world";
+    obstacle1.primitives.resize(1);
+    obstacle1.primitives[0].type = shape_msgs::msg::SolidPrimitive::BOX;
+    obstacle1.primitives[0].dimensions = {0.05, 0.05, 0.05};
+    geometry_msgs::msg::Pose obs_pose1;
+    obs_pose1.position.x = x - 0.07;
+    obs_pose1.position.y = y;
+    obs_pose1.position.z = z;
+    obs_pose1.orientation.w = 1.0;
+    obstacle1.primitive_poses.push_back(obs_pose1);
+    obstacle1.operation = obstacle1.ADD;
+
+    moveit_msgs::msg::CollisionObject obstacle2;
+    obstacle2.id = "obstacle2";
+    obstacle2.header.frame_id = "world";
+    obstacle2.primitives.resize(1);
+    obstacle2.primitives[0].type = shape_msgs::msg::SolidPrimitive::BOX;
+    obstacle2.primitives[0].dimensions = {0.05, 0.05, 0.05};
+    geometry_msgs::msg::Pose obs_pose2;
+    obs_pose2.position.x = x;
+    obs_pose2.position.y = y + 0.07;
+    obs_pose2.position.z = z;
+    obs_pose2.orientation.w = 1.0;
+    obstacle2.primitive_poses.push_back(obs_pose2);
+    obstacle2.operation = obstacle2.ADD;
+
     moveit::planning_interface::PlanningSceneInterface psi;
     psi.applyCollisionObject(object);
+    psi.applyCollisionObject(obstacle1);
+    psi.applyCollisionObject(obstacle2);
     RCLCPP_INFO(this->get_logger(), "Waiting for object to appear in planning scene...");
     auto start = std::chrono::steady_clock::now();
-    while (rclcpp::ok() && (std::chrono::steady_clock::now() - start) < std::chrono::seconds(1)) {
+    while (rclcpp::ok() && (std::chrono::steady_clock::now() - start) < std::chrono::seconds(1))
+    {
         auto objects = psi.getObjects();
-        if (objects.find("object") != objects.end()) {
+        if (objects.find("object") != objects.end())
+        {
             RCLCPP_INFO(this->get_logger(), "Object confirmed in scene at (%.3f, %.3f, %.3f)", x, y, z);
             return;
         }
@@ -270,48 +315,125 @@ void MTCPickPlaceListener::addObjectToScene(double x, double y, double z)
     RCLCPP_WARN(this->get_logger(), "Object not seen after 1 second - proceeding anyway.");
 }
 
+void MTCPickPlaceListener::returnHome()
+{
+    RCLCPP_INFO(this->get_logger(), "Moving to safe home pose...");
+    auto move_group = std::make_shared<moveit::planning_interface::MoveGroupInterface>(
+        shared_from_this(), "ur_manipulator");
+    rclcpp::sleep_for(std::chrono::milliseconds(500));
+
+    move_group->setGoalJointTolerance(0.1);       // rad
+    move_group->setGoalPositionTolerance(0.05);   // m
+    move_group->setGoalOrientationTolerance(0.1); // rad
+    move_group->setPlannerId("RRTConnectkConfigDefault");
+    move_group->setPlanningTime(30.0);
+    move_group->setMaxVelocityScalingFactor(0.3);
+    move_group->setMaxAccelerationScalingFactor(0.3);
+    move_group->setNamedTarget("up");
+
+    auto success = static_cast<bool>(move_group->move());
+    if (!success)
+    {
+        RCLCPP_WARN(this->get_logger(), "Failed to move home, may already be at safe pose.");
+    }
+    else
+    {
+        RCLCPP_INFO(this->get_logger(), "Reached safe home pose.");
+    }
+    rclcpp::sleep_for(std::chrono::seconds(1));
+}
+
 void MTCPickPlaceListener::runPickAndPlace()
 {
-    addObjectToScene(pick_x_, pick_y_, pick_z_);
-
-    mtc::Task task = createTask();
-    try
+    for (int attempt = 1; attempt <= max_attempts_; ++attempt)
     {
-        task.init();
-    }
-    catch (mtc::InitStageException &e)
-    {
-        RCLCPP_ERROR_STREAM(this->get_logger(),
-                            "Caught InitStageException during task initialization: " << e.what());
-        return;
-    }
+        RCLCPP_INFO(this->get_logger(), "Pick-and-place attempt %d/%d", attempt, max_attempts_);
+        addObjectToScene(pick_x_, pick_y_, pick_z_);
 
-    if (!task.plan(5))
-    {
-        RCLCPP_ERROR(this->get_logger(), "Task planning failed, no solutions found");
-        return;
-    }
-
-    task.introspection().publishSolution(*task.solutions().front());
-
-    try
-    {
-        auto result = task.execute(*task.solutions().front());
-        if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
+        mtc::Task task = createTask();
+        try
+        {
+            task.init();
+        }
+        catch (mtc::InitStageException &e)
         {
             RCLCPP_ERROR_STREAM(this->get_logger(),
-                                "Task execution failed with error code: " << result.val);
+                                "Caught InitStageException during task initialization: " << e.what());
+            if (attempt < max_attempts_)
+            {
+                RCLCPP_INFO(this->get_logger(), "Retrying pick-and-place after initialization failure...");
+                returnHome();
+                continue; // retry
+            }
+            else
+            {
+                RCLCPP_ERROR(this->get_logger(), "Max attempts reached. Aborting pick-and-place.");
+                return;
+            }
             return;
         }
-    }
-    catch (std::exception &e)
-    {
-        RCLCPP_ERROR_STREAM(this->get_logger(),
-                            "Caught exception during task execution: " << e.what());
-        return;
-    }
 
-    RCLCPP_INFO(this->get_logger(), "Pick and place completed successfully");
+        if (!task.plan(5))
+        {
+            RCLCPP_ERROR(this->get_logger(), "Task planning failed on attempt %d", attempt);
+            if (attempt < max_attempts_)
+            {
+                RCLCPP_INFO(this->get_logger(), "Retrying pick-and-place after planning failure...");
+                returnHome();
+                continue; // retry
+            }
+            else
+            {
+                RCLCPP_ERROR(this->get_logger(), "Max attempts reached. Aborting pick-and-place.");
+            }
+            return;
+        }
+
+        task.introspection().publishSolution(*task.solutions().front());
+        try
+        {
+            auto result = task.execute(*task.solutions().front());
+            if (result.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS)
+            {
+                RCLCPP_ERROR_STREAM(this->get_logger(),
+                                    "Task execution failed on attempt " << attempt << " with error code: " << result.val);
+                if (attempt < max_attempts_)
+                {
+                    RCLCPP_INFO(this->get_logger(), "Retrying pick-and-place after execution failure...");
+                    returnHome();
+                    continue; // retry
+                }
+                else
+                {
+                    RCLCPP_ERROR(this->get_logger(), "Max attempts reached. Aborting pick-and-place.");
+                }
+                return;
+            }
+            else
+            {
+                RCLCPP_INFO(this->get_logger(), "Pick-and-place executed successfully on attempt %d", attempt);
+                break; // exit loop on success
+            }
+        }
+        catch (std::exception &e)
+        {
+            RCLCPP_ERROR_STREAM(this->get_logger(),
+                                "Caught exception during task execution: " << e.what());
+            if (attempt < max_attempts_)
+            {
+                RCLCPP_INFO(this->get_logger(), "Retrying pick-and-place after execution exception...");
+                returnHome();
+                continue; // retry
+            }
+            else
+            {
+                RCLCPP_ERROR(this->get_logger(), "Max attempts reached. Aborting pick-and-place.");
+            }
+            return;
+        }
+
+        RCLCPP_INFO(this->get_logger(), "Pick and place completed successfully");
+    }
 }
 
 mtc::Task MTCPickPlaceListener::createTask()
@@ -349,7 +471,7 @@ mtc::Task MTCPickPlaceListener::createTask()
     auto cartesian_planner = std::make_shared<mtc::solvers::CartesianPath>();
     cartesian_planner->setMaxVelocityScalingFactor(0.1);
     cartesian_planner->setMaxAccelerationScalingFactor(0.1);
-    cartesian_planner->setStepSize(.001);
+    cartesian_planner->setStepSize(.05);
 
     auto sampling_planner = std::make_shared<mtc::solvers::PipelinePlanner>(shared_from_this());
     sampling_planner->setPlannerId("RRTConnectkConfigDefault");
@@ -395,28 +517,82 @@ mtc::Task MTCPickPlaceListener::createTask()
         }
 
         {
-            // Sample grasp pose
-            auto stage = std::make_unique<mtc::stages::GenerateGraspPose>("generate grasp pose");
-            stage->properties().configureInitFrom(mtc::Stage::PARENT);
-            stage->properties().set("marker_ns", "grasp_pose");
-            stage->setPreGraspPose("open");
-            stage->setObject("object");
-            stage->setAngleDelta(M_PI / 36);
-            stage->setMonitoredStage(current_state_ptr);
+            auto grasp_fallback = std::make_unique<mtc::Fallbacks>("grasp strategies");
+            task.properties().exposeTo(
+                grasp_fallback->properties(),
+                {"eef", "group", "ik_frame"});
+            grasp_fallback->properties().configureInitFrom(
+                mtc::Stage::PARENT,
+                {"eef", "group", "ik_frame"});
 
-            Eigen::Isometry3d grasp_frame_transform = Eigen::Isometry3d::Identity();
-            Eigen::Quaterniond q(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitY()) *
-                                 Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitZ()));
-            grasp_frame_transform.linear() = q.matrix();
+            {
+                auto grasp_top = std::make_unique<mtc::SerialContainer>("Top grasp");
+                task.properties().exposeTo(
+                    grasp_top->properties(),
+                    {"eef", "group", "ik_frame"});
+                grasp_top->properties().configureInitFrom(
+                    mtc::Stage::PARENT,
+                    {"eef", "group", "ik_frame"});
 
-            // Compute IK
-            auto wrapper = std::make_unique<mtc::stages::ComputeIK>("grasp pose IK", std::move(stage));
-            wrapper->setMaxIKSolutions(5);
-            wrapper->setMinSolutionDistance(1.0);
-            wrapper->setIKFrame(grasp_frame_transform, hand_frame);
-            wrapper->properties().configureInitFrom(mtc::Stage::PARENT, {"eef", "group"});
-            wrapper->properties().configureInitFrom(mtc::Stage::INTERFACE, {"target_pose"});
-            grasp->insert(std::move(wrapper));
+                auto stage = std::make_unique<mtc::stages::GenerateGraspPose>("generate top grasp pose");
+                stage->properties().configureInitFrom(mtc::Stage::PARENT);
+                stage->properties().set("marker_ns", "grasp_pose");
+                stage->setPreGraspPose("open");
+                stage->setObject("object");
+                stage->setAngleDelta(M_PI / 36);
+                stage->setMonitoredStage(current_state_ptr);
+
+                Eigen::Isometry3d grasp_frame_transform = Eigen::Isometry3d::Identity();
+                Eigen::Quaterniond q(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitY()) *
+                                     Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitZ()));
+                grasp_frame_transform.linear() = q.matrix();
+
+                // Compute IK
+                auto wrapper = std::make_unique<mtc::stages::ComputeIK>("Top grasp pose IK", std::move(stage));
+                wrapper->setMaxIKSolutions(5);
+                wrapper->setMinSolutionDistance(1.0);
+                wrapper->setIKFrame(grasp_frame_transform, hand_frame);
+                wrapper->properties().configureInitFrom(mtc::Stage::PARENT, {"eef", "group"});
+                wrapper->properties().configureInitFrom(mtc::Stage::INTERFACE, {"target_pose"});
+
+                grasp_top->insert(std::move(wrapper));
+                grasp_fallback->add(std::move(grasp_top));
+            }
+
+            {
+                auto grasp_side = std::make_unique<mtc::SerialContainer>("Side grasp");
+                task.properties().exposeTo(
+                    grasp_side->properties(),
+                    {"eef", "group", "ik_frame"});
+                grasp_side->properties().configureInitFrom(
+                    mtc::Stage::PARENT,
+                    {"eef", "group", "ik_frame"});
+
+                auto stage = std::make_unique<mtc::stages::GenerateGraspPose>("generate side grasp pose");
+                stage->properties().configureInitFrom(mtc::Stage::PARENT);
+                stage->properties().set("marker_ns", "grasp_pose");
+                stage->setPreGraspPose("open");
+                stage->setObject("object");
+                stage->setAngleDelta(M_PI / 18);
+                stage->setMonitoredStage(current_state_ptr);
+
+                Eigen::Isometry3d grasp_frame_transform = Eigen::Isometry3d::Identity();
+                Eigen::Quaterniond q(Eigen::AngleAxisd(M_PI * 0.75, Eigen::Vector3d::UnitY()) *
+                                     Eigen::AngleAxisd(M_PI / 2, Eigen::Vector3d::UnitZ()));
+                grasp_frame_transform.linear() = q.matrix();
+
+                // Compute IK
+                auto wrapper = std::make_unique<mtc::stages::ComputeIK>("Side grasp pose IK", std::move(stage));
+                wrapper->setMaxIKSolutions(10);
+                wrapper->setMinSolutionDistance(1.0);
+                wrapper->setIKFrame(grasp_frame_transform, hand_frame);
+                wrapper->properties().configureInitFrom(mtc::Stage::PARENT, {"eef", "group"});
+                wrapper->properties().configureInitFrom(mtc::Stage::INTERFACE, {"target_pose"});
+
+                grasp_side->insert(std::move(wrapper));
+                grasp_fallback->add(std::move(grasp_side));
+            }
+            grasp->insert(std::move(grasp_fallback));
         }
 
         {
