@@ -80,6 +80,11 @@ ros2 control switch_controllers --activate scaled_joint_trajectory_controller
 ros2 run controller_manager spawner finger_width_trajectory_controller
 ros2 topic pub --once /ur3_gripper_cmd std_msgs/msg/Float64MultiArray "{data: [0.11]}"
 
+# Network
+sudo ip route del default via 192.168.0.1
+sudo ip route del default via 192.168.1.1
+sudo sh -c 'echo "nameserver 8.8.8.8" >> /etc/resolv.conf'
+
 # mtc k
 ros2 launch ur3_mtc mtc_pick_place_kinematics.launch.py
 
