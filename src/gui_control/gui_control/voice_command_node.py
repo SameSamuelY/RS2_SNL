@@ -2,7 +2,9 @@
 
 import rclpy
 from rclpy.node import Node
+
 from std_msgs.msg import String
+from std_srvs.srv import Trigger
 
 import speech_recognition as sr
 
@@ -13,6 +15,11 @@ class VoiceCommandNode(Node):
 
         self.command_publisher = self.create_publisher(String, '/gui_command', 10)
 
+        self.trigger_client = self.create_client(
+            Trigger,
+            '/trigger_pick_and_place'
+        )
+
         self.recognizer = sr.Recognizer()
         self.microphone = sr.Microphone()
 
@@ -20,27 +27,35 @@ class VoiceCommandNode(Node):
             "start": "start",
             "begin": "start",
             "go": "start",
+            "run": "start",
+
+            "move": "move",
+            "move robot": "move",
+            "pick and place": "move",
+            "pick": "move",
 
             "stop": "stop",
             "emergency stop": "stop",
             "halt": "stop",
+            "pause": "stop",
 
             "reset": "reset",
             "restart": "reset",
-
-            "move": "move",
-            "move robot": "move",
 
             "home": "home",
             "return home": "home",
         }
 
         self.get_logger().info("Voice command node started.")
-        self.get_logger().info("Supported commands: start, stop, reset, move, home")
+        self.get_logger().info("Commands: start, stop, reset, move, home")
 
-        with self.microphone as source:
-            self.get_logger().info("Calibrating microphone noise...")
-            self.recognizer.adjust_for_ambient_noise(source, duration=1.0)
+        try:
+            with self.microphone as source:
+                self.get_logger().info("Calibrating microphone noise...")
+                self.recognizer.adjust_for_ambient_noise(source, duration=1.0)
+
+        except Exception as error:
+            self.get_logger().error(f"Microphone setup error: {error}")
 
         self.timer = self.create_timer(0.5, self.listen_for_command)
 
@@ -59,10 +74,10 @@ class VoiceCommandNode(Node):
 
             for phrase, command in self.command_map.items():
                 if phrase in recognised_text:
-                    self.publish_command(command)
+                    self.handle_command(command)
                     return
 
-            self.get_logger().warn("No matching command found.")
+            self.get_logger().warn("No matching voice command found.")
 
         except sr.WaitTimeoutError:
             pass
@@ -71,17 +86,49 @@ class VoiceCommandNode(Node):
             self.get_logger().warn("Could not understand audio.")
 
         except sr.RequestError as error:
-            self.get_logger().error(f"Speech recognition error: {error}")
+            self.get_logger().error(f"Speech recognition API error: {error}")
 
         except Exception as error:
             self.get_logger().error(f"Voice node error: {error}")
 
-    def publish_command(self, command):
+    def handle_command(self, command):
+        self.publish_gui_command(command)
+
+        if command in ["start", "move"]:
+            self.call_pick_and_place_trigger()
+
+    def publish_gui_command(self, command):
         msg = String()
         msg.data = command
         self.command_publisher.publish(msg)
 
-        self.get_logger().info(f"Published voice command: {command}")
+        self.get_logger().info(f"Published voice command to /gui_command: {command}")
+
+    def call_pick_and_place_trigger(self):
+        if not self.trigger_client.service_is_ready():
+            if not self.trigger_client.wait_for_service(timeout_sec=1.0):
+                self.get_logger().error(
+                    "/trigger_pick_and_place service unavailable. "
+                    "Make sure mtc_pick_place_listener is running."
+                )
+                return
+
+        request = Trigger.Request()
+        future = self.trigger_client.call_async(request)
+
+        future.add_done_callback(self.trigger_response_callback)
+
+        self.get_logger().info("Voice command called /trigger_pick_and_place service")
+
+    def trigger_response_callback(self, future):
+        try:
+            response = future.result()
+            self.get_logger().info(
+                f"Trigger response: success={response.success}, message={response.message}"
+            )
+
+        except Exception as error:
+            self.get_logger().error(f"Trigger service call failed: {error}")
 
 
 def main(args=None):
@@ -90,6 +137,7 @@ def main(args=None):
 
     try:
         rclpy.spin(node)
+
     except KeyboardInterrupt:
         pass
 
