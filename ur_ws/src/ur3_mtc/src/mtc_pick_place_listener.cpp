@@ -26,6 +26,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/vector3_stamped.hpp>
 
+#include <std_msgs/msg/empty.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
@@ -62,6 +63,10 @@ private:
     bool activateController(const std::string& controller_name);
     rclcpp::Client<controller_manager_msgs::srv::SwitchController>::SharedPtr 
         controller_switch_cli_;
+
+    void eStopCallback(const std_msgs::msg::Empty::SharedPtr /*msg*/);
+    rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr estop_sub_;
+    std::atomic<bool> emergency_stop_{false};
     
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr detection_sub_;
     std::mutex pick_pose_mutex_;
@@ -107,11 +112,14 @@ MTCPickPlaceListener::MTCPickPlaceListener(const rclcpp::NodeOptions &options)
     this->get_parameter_or<double>("place_qz", place_qz_, 0.0);
     this->get_parameter_or<double>("place_qw", place_qw_, 0.0);
 
-    // Subscribe to detection topic
+    estop_sub_ = this->create_subscription<std_msgs::msg::Empty>(
+        "/emergency_stop", 10,
+        std::bind(&MTCPickPlaceListener::eStopCallback, this, std::placeholders::_1));
+    RCLCPP_INFO(this->get_logger(), "Emergency stop subscriber created on /emergency_stop");
+
     detection_sub_ = this->create_subscription<std_msgs::msg::String>(
         "/detection_result", 10,
         std::bind(&MTCPickPlaceListener::detectionCallback, this, std::placeholders::_1));
-
     RCLCPP_INFO(this->get_logger(), "MTC Pick and Place Listener started. Waiting for detection...");
 
     place_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
@@ -124,6 +132,11 @@ MTCPickPlaceListener::MTCPickPlaceListener(const rclcpp::NodeOptions &options)
         std::bind(&MTCPickPlaceListener::triggerCallback, this,
                   std::placeholders::_1, std::placeholders::_2));
     RCLCPP_INFO(this->get_logger(), "Service 'trigger_pick_and_place' ready. Call to start pick-and-place.");
+
+    controller_switch_cli_ = this->create_client<controller_manager_msgs::srv::SwitchController>(
+        "/controller_manager/switch_controller");
+    RCLCPP_INFO(this->get_logger(), "Controller swtich client created on /controller_manager/switch_controller");
+
 }
 
 MTCPickPlaceListener::~MTCPickPlaceListener()
@@ -133,6 +146,24 @@ MTCPickPlaceListener::~MTCPickPlaceListener()
         RCLCPP_INFO(this->get_logger(), "Waiting for pick-and-place thread to finish...");
         planner_thread_.join();
         RCLCPP_INFO(this->get_logger(), "Thread joined.");
+    }
+}
+
+void MTCPickPlaceListener::eStopCallback(const std_msgs::msg::Empty::SharedPtr /*msg*/)
+{
+    RCLCPP_WARN(this->get_logger(), "EMERGENCY STOP RECEIVED!");
+    emergency_stop_ = true;
+
+    // Cancel any ongoing planning/execution
+    if (planner_thread_.joinable()) {
+        // Deactivating controllers instead of interrupting threads
+        RCLCPP_INFO(this->get_logger(), "Attempting to stop all motion...");
+        // Deactivate both controllers to stop any ongoing trajectory
+        auto req = std::make_shared<controller_manager_msgs::srv::SwitchController::Request>();
+        req->deactivate_controllers = {"scaled_joint_trajectory_controller", "finger_width_trajectory_controller"};
+        if (controller_switch_cli_->wait_for_service(std::chrono::seconds(1))) {
+            controller_switch_cli_->async_send_request(req);
+        }
     }
 }
 
@@ -252,8 +283,6 @@ void MTCPickPlaceListener::triggerCallback(
 
 bool MTCPickPlaceListener::activateController(const std::string& controller_name)
 {
-    controller_switch_cli_ = this->create_client<controller_manager_msgs::srv::SwitchController>(
-        "/controller_manager/switch_controller");
     if (!controller_switch_cli_->wait_for_service(std::chrono::seconds(2))) {
         RCLCPP_ERROR(this->get_logger(), "Switch controller service not available");
         return false;
@@ -375,6 +404,10 @@ void MTCPickPlaceListener::returnHome()
 
 void MTCPickPlaceListener::runPickAndPlace()
 {
+    if (emergency_stop_) {
+        RCLCPP_ERROR(this->get_logger(), "Emergency stop active. Cannot start pick-and-place. Restart the node to continue");
+        return;
+    }
     if (!activateController("scaled_joint_trajectory_controller")) {
         RCLCPP_ERROR(this->get_logger(), "Cannot proceed without active UR3 trajectory controller");
         return;

@@ -42,25 +42,6 @@ ros2 launch ur3_planner bringup.launch.py \
     gripper_connection_type:=serial \
     rviz:=true
 
-# Driver (standalone without bringup)
-ros2 launch ur_robot_driver ur_control.launch.py \
-    name:=ur_onrobot \
-    robot_ip:=192.168.56.101 \
-    ur_type:=ur3 \
-    description_file:=ur_onrobot.urdf.xacro \
-    moveit_config_file:=ur_onrobot.srdf.xacro \
-    launch_rviz:=false \
-    use_fake_gripper:=true \
-    gripper_connection_type:=serial
-# moveit (standalone without bringup)
-ros2 launch ur_moveit_config ur_moveit.launch.py \
-    name:=ur_onrobot \
-    ur_type:=ur3 \
-    launch_rviz:=true \
-    description_file:=ur_onrobot.urdf.xacro \
-    moveit_config_file:=ur_onrobot.srdf.xacro
-
-
 # mtc listener (simulation)
 ros2 launch ur3_mtc mtc_pick_place_listener.launch.py \
     place_x:=-0.2 place_y:=0.2 place_z:=0.05
@@ -68,6 +49,9 @@ ros2 launch ur3_mtc mtc_pick_place_listener.launch.py \
 ros2 launch ur3_mtc mtc_pick_place_listener.launch.py \
     robot_ip:=192.168.0.195 \
     place_x:=-0.2 place_y:=0.2 place_z:=0.05
+
+# estop
+ros2 topic pub /emergency_stop std_msgs/msg/Empty "{}"
 
 # mtc listener pub
 ros2 topic pub --once /detection_result std_msgs/msg/String "{data: '{\"objects\": [{\"position\": {\"x\": 0.3, \"y\": 0.3, \"z\": 0.05}}]}'}"
@@ -107,6 +91,28 @@ ros2 launch ur3_mtc mtc_pick_place_kinematics.launch.py \
     pick_x:=-0.2 pick_y:=-0.2 pick_z:=0.05 \
     place_x:=0.2 place_y:=0.2 place_z:=0.05 \
     place_qx:=0.0 place_qy:=0.0 place_qz:=0.0 place_qw:=1.0
+
+#
+#
+#
+
+# Driver (standalone without bringup)
+ros2 launch ur_robot_driver ur_control.launch.py \
+    name:=ur_onrobot \
+    robot_ip:=192.168.56.101 \
+    ur_type:=ur3 \
+    description_file:=ur_onrobot.urdf.xacro \
+    moveit_config_file:=ur_onrobot.srdf.xacro \
+    launch_rviz:=false \
+    use_fake_gripper:=true \
+    gripper_connection_type:=serial
+# moveit (standalone without bringup)
+ros2 launch ur_moveit_config ur_moveit.launch.py \
+    name:=ur_onrobot \
+    ur_type:=ur3 \
+    launch_rviz:=true \
+    description_file:=ur_onrobot.urdf.xacro \
+    moveit_config_file:=ur_onrobot.srdf.xacro
 
 #
 #
