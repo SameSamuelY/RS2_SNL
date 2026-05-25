@@ -8,8 +8,9 @@ import rclpy
 from rclpy.node import Node
 
 from geometry_msgs.msg import Pose, PoseStamped
-from std_msgs.msg import String, Bool, Float64, Float64MultiArray
+from std_msgs.msg import String, Float64, Float64MultiArray
 from sensor_msgs.msg import Image
+from std_srvs.srv import Trigger
 from cv_bridge import CvBridge
 
 from PyQt5.QtCore import Qt, QTimer
@@ -38,18 +39,46 @@ class GuiROSNode(Node):
     def __init__(self):
         super().__init__('gui_controller')
 
-        self.goal_publisher = self.create_publisher(Pose, '/ur3_goal_pose', 10)
-        self.plan_goal_publisher = self.create_publisher(PoseStamped, '/plan_goal_pose', 10)
-        self.trigger_publisher = self.create_publisher(Bool, '/trigger_pick_and_place', 10)
-        self.command_publisher = self.create_publisher(String, '/gui_command', 10)
-
-        self.gripper_publisher = self.create_publisher(
-            Float64MultiArray,
-            '/finger_width_controller/commands',
+        # Publishes manual pick pose in the same format expected by mtc_pick_place_listener.cpp
+        self.detection_publisher = self.create_publisher(
+            String,
+            '/detection_result',
             10
         )
 
-        self.velocity_publisher = self.create_publisher(Float64, '/velocity_scale', 10)
+        # Publishes place pose expected by mtc_pick_place_listener.cpp
+        self.plan_goal_publisher = self.create_publisher(
+            PoseStamped,
+            '/plan_goal_pose',
+            10
+        )
+
+        # Trigger is a SERVICE, not a Bool topic
+        self.trigger_client = self.create_client(
+            Trigger,
+            '/trigger_pick_and_place'
+        )
+
+        # Fallback/logical GUI commands
+        self.command_publisher = self.create_publisher(
+            String,
+            '/gui_command',
+            10
+        )
+
+        # Correct gripper topic based on friend's command:
+        # ros2 topic pub --once /ur3_gripper_cmd std_msgs/msg/Float64MultiArray "{data: [0.11]}"
+        self.gripper_publisher = self.create_publisher(
+            Float64MultiArray,
+            '/ur3_gripper_cmd',
+            10
+        )
+
+        self.velocity_publisher = self.create_publisher(
+            Float64,
+            '/velocity_scale',
+            10
+        )
 
         self.camera_topic = '/camera/camera/color/image_raw'
         # For WSL burger test, change to:
@@ -70,6 +99,7 @@ class GuiROSNode(Node):
             10
         )
 
+        # This will only update if the C++ listener publishes /motion_status
         self.motion_status_subscriber = self.create_subscription(
             String,
             '/motion_status',
@@ -86,23 +116,53 @@ class GuiROSNode(Node):
 
         self.get_logger().info("GUI ROS node ready")
 
-    def publish_goal(self, pose: Pose):
-        self.goal_publisher.publish(pose)
-        self.get_logger().info("Published pick goal pose to /ur3_goal_pose")
+    def publish_pick_detection(self, pose: Pose):
+        msg = String()
+        msg.data = json.dumps({
+            "objects": [
+                {
+                    "position": {
+                        "x": pose.position.x,
+                        "y": pose.position.y,
+                        "z": pose.position.z
+                    }
+                }
+            ]
+        })
+
+        self.detection_publisher.publish(msg)
+        self.get_logger().info("Published pick pose JSON to /detection_result")
 
     def publish_place_goal(self, pose: Pose):
         msg = PoseStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'world'
+        msg.header.frame_id = "world"
         msg.pose = pose
+
         self.plan_goal_publisher.publish(msg)
         self.get_logger().info("Published place goal pose to /plan_goal_pose")
 
-    def publish_pick_and_place_trigger(self):
-        msg = Bool()
-        msg.data = True
-        self.trigger_publisher.publish(msg)
-        self.get_logger().info("Published trigger to /trigger_pick_and_place")
+    def call_pick_and_place_trigger(self):
+        if not self.trigger_client.service_is_ready():
+            if not self.trigger_client.wait_for_service(timeout_sec=1.0):
+                self.get_logger().error("/trigger_pick_and_place service unavailable")
+                return False
+
+        request = Trigger.Request()
+        future = self.trigger_client.call_async(request)
+
+        def done_callback(fut):
+            try:
+                response = fut.result()
+                self.get_logger().info(
+                    f"Trigger response: success={response.success}, message={response.message}"
+                )
+            except Exception as error:
+                self.get_logger().error(f"Trigger service call failed: {error}")
+
+        future.add_done_callback(done_callback)
+        self.get_logger().info("Called /trigger_pick_and_place service")
+        return True
 
     def publish_command(self, command_text: str):
         msg = String()
@@ -113,12 +173,13 @@ class GuiROSNode(Node):
         msg = Float64MultiArray()
         msg.data = [width]
         self.gripper_publisher.publish(msg)
-        self.get_logger().info(f"Published gripper width: {width:.3f} m")
+        self.get_logger().info(f"Published gripper width to /ur3_gripper_cmd: {width:.3f} m")
 
     def publish_velocity_scale(self, scale: float):
         msg = Float64()
         msg.data = scale
         self.velocity_publisher.publish(msg)
+        self.get_logger().info(f"Published velocity scale: {scale:.2f}")
 
     def camera_callback(self, msg: Image):
         try:
@@ -135,10 +196,6 @@ class GuiROSNode(Node):
         try:
             parsed_data = json.loads(msg.data)
 
-            # Supported /detection_result formats:
-            # 1. [{"tag_x_m": ..., "tag_y_m": ..., "tag_z_m": ...}]
-            # 2. {"objects": [{"position": {"x": ..., "y": ..., "z": ...}}]}
-            # 3. {"position": {"x": ..., "y": ..., "z": ...}}
             if isinstance(parsed_data, list):
                 detections = parsed_data
             elif isinstance(parsed_data, dict) and isinstance(parsed_data.get("objects"), list):
@@ -339,7 +396,10 @@ class RobotGUI(QMainWindow):
         group = QGroupBox("System Controls")
         layout = QVBoxLayout()
 
-        instruction = QLabel("Start publishes /trigger_pick_and_place and sends the place pose to /plan_goal_pose.")
+        instruction = QLabel(
+            "Start sends pick pose to /detection_result, place pose to /plan_goal_pose, "
+            "then calls /trigger_pick_and_place service."
+        )
         instruction.setWordWrap(True)
         instruction.setObjectName("InfoLabel")
 
@@ -368,12 +428,12 @@ class RobotGUI(QMainWindow):
         return group
 
     def build_goal_group(self):
-        group = QGroupBox("Pick / Cartesian Goal Pose")
+        group = QGroupBox("Pick Pose for /detection_result")
         layout = QGridLayout()
 
         self.goal_x_input = self.make_spinbox(-1.0, 1.0, -0.300)
-        self.goal_y_input = self.make_spinbox(-1.0, 1.0, -0.200)
-        self.goal_z_input = self.make_spinbox(0.0, 1.5, 0.010)
+        self.goal_y_input = self.make_spinbox(-1.0, 1.0, -0.300)
+        self.goal_z_input = self.make_spinbox(0.0, 1.5, 0.050)
 
         self.qx_input = self.make_spinbox(-1.0, 1.0, 0.000, 0.001)
         self.qy_input = self.make_spinbox(-1.0, 1.0, 0.707, 0.001)
@@ -457,7 +517,7 @@ class RobotGUI(QMainWindow):
         self.send_gripper_button = QPushButton("Send Gripper Command")
         self.send_gripper_button.clicked.connect(self.send_gripper_command)
 
-        note_label = QLabel("Publishes Float64MultiArray to /finger_width_controller/commands")
+        note_label = QLabel("Publishes Float64MultiArray to /ur3_gripper_cmd")
         note_label.setObjectName("InfoLabel")
         note_label.setWordWrap(True)
 
@@ -544,7 +604,9 @@ class RobotGUI(QMainWindow):
         self.state_value.setObjectName("StateValue")
         self.state_value.setAlignment(Qt.AlignCenter)
 
-        self.status_message = QLabel("System is waiting for user input.")
+        self.status_message = QLabel(
+            "System is waiting for user input. Motion status requires /motion_status publisher."
+        )
         self.status_message.setObjectName("InfoLabel")
         self.status_message.setWordWrap(True)
 
@@ -584,8 +646,10 @@ class RobotGUI(QMainWindow):
 
         self.append_log("GUI initialised successfully.")
         self.append_log("Subscribed to camera, detection and motion status topics.")
+        self.append_log("Pick pose publishes JSON to /detection_result.")
         self.append_log("Place pose publishes to /plan_goal_pose.")
-        self.append_log("Start button publishes to /trigger_pick_and_place.")
+        self.append_log("Start calls /trigger_pick_and_place service.")
+        self.append_log("Gripper publishes to /ur3_gripper_cmd.")
 
         return group
 
@@ -640,7 +704,9 @@ class RobotGUI(QMainWindow):
         self.use_detection_button = QPushButton("Use Selected Detection as Pick Pose")
         self.use_detection_button.clicked.connect(self.use_selected_detection_as_pick_pose)
 
-        self.detection_note_label = QLabel("Supports object position format and tag_x_m/tag_y_m/tag_z_m format.")
+        self.detection_note_label = QLabel(
+            "Manual pick pose only contains x/y/z, so colour/shape may show as Unknown."
+        )
         self.detection_note_label.setObjectName("InfoLabel")
         self.detection_note_label.setWordWrap(True)
 
@@ -662,9 +728,9 @@ class RobotGUI(QMainWindow):
         self.last_command_label = QLabel("Last Command: None")
 
         self.integration_label = QLabel(
-            "Topics: /detection_result, /ur3_goal_pose, /plan_goal_pose, "
-            "/trigger_pick_and_place, /finger_width_controller/commands, "
-            "/velocity_scale, /gui_command, /motion_status, camera image topic"
+            "Topics/services: /detection_result, /plan_goal_pose, "
+            "/trigger_pick_and_place service, /ur3_gripper_cmd, /velocity_scale, "
+            "/gui_command, /motion_status, camera image topic."
         )
         self.integration_label.setWordWrap(True)
 
@@ -695,13 +761,13 @@ class RobotGUI(QMainWindow):
         qz = pose.orientation.z
         qw = pose.orientation.w
 
-        norm = (qx*qx + qy*qy + qz*qz + qw*qw) ** 0.5
+        norm = (qx * qx + qy * qy + qz * qz + qw * qw) ** 0.5
 
         if norm == 0:
             pose.orientation.x = 0.0
-            pose.orientation.y = 0.707
+            pose.orientation.y = 0.0
             pose.orientation.z = 0.0
-            pose.orientation.w = 0.707
+            pose.orientation.w = 1.0
             return pose
 
         pose.orientation.x = qx / norm
@@ -784,45 +850,73 @@ class RobotGUI(QMainWindow):
     def send_pick_goal_only(self):
         pose = self.create_pick_pose_from_inputs()
 
-        if not self.is_pose_within_workspace(pose.position.x, pose.position.y, pose.position.z):
+        if not self.is_pose_within_workspace(
+            pose.position.x,
+            pose.position.y,
+            pose.position.z
+        ):
             self.append_log("Pick pose rejected because it is outside workspace limits.")
             return
 
-        self.ros_node.publish_goal(pose)
+        self.ros_node.publish_pick_detection(pose)
         self.last_command_label.setText("Last Command: Pick pose sent")
         self.append_log(
-            f"Pick pose sent to /ur3_goal_pose: x={pose.position.x:.3f}, "
-            f"y={pose.position.y:.3f}, z={pose.position.z:.3f}"
+            f"Pick pose sent to /detection_result: "
+            f"x={pose.position.x:.3f}, y={pose.position.y:.3f}, z={pose.position.z:.3f}"
         )
 
     def send_place_goal_only(self):
         pose = self.create_place_pose_from_inputs()
 
-        if not self.is_pose_within_workspace(pose.position.x, pose.position.y, pose.position.z):
+        if not self.is_pose_within_workspace(
+            pose.position.x,
+            pose.position.y,
+            pose.position.z
+        ):
             self.append_log("Place pose rejected because it is outside workspace limits.")
             return
 
         self.ros_node.publish_place_goal(pose)
         self.last_command_label.setText("Last Command: Place pose sent")
         self.append_log(
-            f"Place pose sent to /plan_goal_pose: x={pose.position.x:.3f}, "
-            f"y={pose.position.y:.3f}, z={pose.position.z:.3f}"
+            f"Place pose sent to /plan_goal_pose: "
+            f"x={pose.position.x:.3f}, y={pose.position.y:.3f}, z={pose.position.z:.3f}"
         )
 
     def start_system_with_goal(self):
+        pick_pose = self.create_pick_pose_from_inputs()
         place_pose = self.create_place_pose_from_inputs()
 
-        if not self.is_pose_within_workspace(place_pose.position.x, place_pose.position.y, place_pose.position.z):
+        if not self.is_pose_within_workspace(
+            pick_pose.position.x,
+            pick_pose.position.y,
+            pick_pose.position.z
+        ):
+            self.append_log("Start rejected: pick pose outside workspace limits.")
+            return
+
+        if not self.is_pose_within_workspace(
+            place_pose.position.x,
+            place_pose.position.y,
+            place_pose.position.z
+        ):
             self.append_log("Start rejected: place pose outside workspace limits.")
             return
 
+        self.ros_node.publish_pick_detection(pick_pose)
         self.ros_node.publish_place_goal(place_pose)
-        self.ros_node.publish_pick_and_place_trigger()
+
+        triggered = self.ros_node.call_pick_and_place_trigger()
         self.ros_node.publish_command("start")
 
-        self.last_command_label.setText("Last Command: Pick-and-place triggered")
-        self.append_log("Start pressed. Published /plan_goal_pose and /trigger_pick_and_place.")
-        self.update_state_display("Executing", "Pick-and-place trigger sent.")
+        if triggered:
+            self.last_command_label.setText("Last Command: Pick-and-place triggered")
+            self.append_log("Start pressed. Sent pick pose, place pose, then called trigger service.")
+            self.update_state_display("Executing", "Pick-and-place trigger service called.")
+        else:
+            self.last_command_label.setText("Last Command: Trigger failed")
+            self.append_log("Start failed: /trigger_pick_and_place service unavailable.")
+            self.update_state_display("Idle", "Trigger service unavailable.")
 
     def update_gripper_label(self):
         width = self.gripper_slider.value() / 1000.0
@@ -834,7 +928,7 @@ class RobotGUI(QMainWindow):
         self.ros_node.publish_gripper_width(width)
         self.ros_node.publish_command("gripper")
 
-        self.append_log(f"Published gripper width: {width:.3f} m")
+        self.append_log(f"Published gripper width to /ur3_gripper_cmd: {width:.3f} m")
         self.last_command_label.setText("Last Command: Gripper command sent")
 
     def update_velocity_label(self):
@@ -916,7 +1010,11 @@ class RobotGUI(QMainWindow):
         self.detection_selector.clear()
 
         for i, detection in enumerate(detections):
-            colour = detection.get("colour", detection.get("color", "Object")) if isinstance(detection, dict) else "Object"
+            colour = (
+                detection.get("colour", detection.get("color", "Object"))
+                if isinstance(detection, dict)
+                else "Object"
+            )
             shape = detection.get("shape", "") if isinstance(detection, dict) else ""
             label = f"{i + 1}: {colour} {shape}".strip()
             self.detection_selector.addItem(label)
@@ -968,7 +1066,12 @@ class RobotGUI(QMainWindow):
             centroid_y = "N/A"
             depth_m = None
 
-        text = f"Selected Detection:\nColour: {colour}\nShape: {shape}\nPixel: ({centroid_x}, {centroid_y})"
+        text = (
+            f"Selected Detection:\n"
+            f"Colour: {colour}\n"
+            f"Shape: {shape}\n"
+            f"Pixel: ({centroid_x}, {centroid_y})"
+        )
 
         if depth_m is not None:
             text += f"\nDepth: {float(depth_m):.3f} m"
