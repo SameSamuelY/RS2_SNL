@@ -29,9 +29,15 @@ ros2 run ur_client_library start_ursim.sh \
   -m ur3 \
   -f "-p 5900:5900 -p 6080:6080 -p 30001-30004:30001-30004 -p 29999:29999"
 
-# bringup
+# bringup (simulation)
 ros2 launch ur3_planner bringup.launch.py \
     robot_ip:=192.168.56.101 \
+    use_fake_gripper:=true \
+    gripper_connection_type:=serial \
+    rviz:=true
+# bringup (real UR3)
+ros2 launch ur3_planner bringup.launch.py \
+    robot_ip:=192.168.0.195 \
     use_fake_gripper:=true \
     gripper_connection_type:=serial \
     rviz:=true
@@ -55,8 +61,12 @@ ros2 launch ur_moveit_config ur_moveit.launch.py \
     moveit_config_file:=ur_onrobot.srdf.xacro
 
 
-# mtc listener
+# mtc listener (simulation)
 ros2 launch ur3_mtc mtc_pick_place_listener.launch.py \
+    place_x:=-0.2 place_y:=0.2 place_z:=0.05
+# mtc listener (real UR3)
+ros2 launch ur3_mtc mtc_pick_place_listener.launch.py \
+    robot_ip:=192.168.0.195 \
     place_x:=-0.2 place_y:=0.2 place_z:=0.05
 
 # mtc listener pub

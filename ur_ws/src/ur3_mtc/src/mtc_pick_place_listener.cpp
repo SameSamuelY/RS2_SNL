@@ -17,6 +17,8 @@
 #include <moveit_msgs/msg/attached_collision_object.hpp>
 #include <moveit_msgs/msg/collision_object.hpp>
 #include <moveit_msgs/msg/move_it_error_codes.hpp>
+#include <controller_manager_msgs/srv/list_controllers.hpp>
+#include <controller_manager_msgs/srv/switch_controller.hpp>
 #include <shape_msgs/msg/solid_primitive.hpp>
 
 #include <Eigen/Geometry>
@@ -57,6 +59,10 @@ private:
     void triggerCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
                          std::shared_ptr<std_srvs::srv::Trigger::Response> res);
 
+    bool activateController(const std::string& controller_name);
+    rclcpp::Client<controller_manager_msgs::srv::SwitchController>::SharedPtr 
+        controller_switch_cli_;
+    
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr detection_sub_;
     std::mutex pick_pose_mutex_;
     bool pick_pose_received_ = false;
@@ -244,6 +250,30 @@ void MTCPickPlaceListener::triggerCallback(
     RCLCPP_INFO(this->get_logger(), "Trigger accepted. Running pick-and-place asynchronously.");
 }
 
+bool MTCPickPlaceListener::activateController(const std::string& controller_name)
+{
+    controller_switch_cli_ = this->create_client<controller_manager_msgs::srv::SwitchController>(
+        "/controller_manager/switch_controller");
+    if (!controller_switch_cli_->wait_for_service(std::chrono::seconds(2))) {
+        RCLCPP_ERROR(this->get_logger(), "Switch controller service not available");
+        return false;
+    }
+
+    auto req = std::make_shared<controller_manager_msgs::srv::SwitchController::Request>();
+    req->activate_controllers = {controller_name};
+    auto future = controller_switch_cli_->async_send_request(req);
+    if (future.wait_for(std::chrono::milliseconds(500)) == std::future_status::ready)
+    {
+        RCLCPP_INFO(this->get_logger(), "Activated controller '%s' (or already active)", controller_name.c_str());
+        return true;
+    }
+    else 
+    {
+        RCLCPP_WARN(this->get_logger(), "Activation service call for '%s' timed out; continuing anyway", controller_name.c_str());
+        return false;
+    }
+}
+
 void MTCPickPlaceListener::addObjectToScene(double x, double y, double z)
 {
     moveit_msgs::msg::CollisionObject object;
@@ -345,6 +375,15 @@ void MTCPickPlaceListener::returnHome()
 
 void MTCPickPlaceListener::runPickAndPlace()
 {
+    if (!activateController("scaled_joint_trajectory_controller")) {
+        RCLCPP_ERROR(this->get_logger(), "Cannot proceed without active UR3 trajectory controller");
+        return;
+    }
+    if (!activateController("finger_width_trajectory_controller")) {
+        RCLCPP_ERROR(this->get_logger(), "Cannot proceed without active gripper controller");
+        return;
+    }
+
     for (int attempt = 1; attempt <= max_attempts_; ++attempt)
     {
         RCLCPP_INFO(this->get_logger(), "Pick-and-place attempt %d/%d", attempt, max_attempts_);
@@ -454,10 +493,10 @@ mtc::Task MTCPickPlaceListener::createTask()
     task.setProperty("eef", hand_group);
     task.setProperty("ik_frame", hand_frame);
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
     mtc::Stage *current_state_ptr = nullptr; // Forward current_state on to grasp pose generator
-#pragma GCC diagnostic pop
+    #pragma GCC diagnostic pop
 
     // Stage 1: current state
     auto stage_state_current = std::make_unique<mtc::stages::CurrentState>("current");
