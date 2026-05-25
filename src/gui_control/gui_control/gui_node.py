@@ -7,8 +7,8 @@ from datetime import datetime
 import rclpy
 from rclpy.node import Node
 
-from geometry_msgs.msg import Pose
-from std_msgs.msg import String, Float64, Float64MultiArray
+from geometry_msgs.msg import Pose, PoseStamped
+from std_msgs.msg import String, Bool, Float64, Float64MultiArray
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
@@ -39,10 +39,10 @@ class GuiROSNode(Node):
         super().__init__('gui_controller')
 
         self.goal_publisher = self.create_publisher(Pose, '/ur3_goal_pose', 10)
-        self.place_goal_publisher = self.create_publisher(Pose, '/place_goal_pose', 10)
+        self.plan_goal_publisher = self.create_publisher(PoseStamped, '/plan_goal_pose', 10)
+        self.trigger_publisher = self.create_publisher(Bool, '/trigger_pick_and_place', 10)
         self.command_publisher = self.create_publisher(String, '/gui_command', 10)
 
-        # Matches friend’s working gripper GUI
         self.gripper_publisher = self.create_publisher(
             Float64MultiArray,
             '/finger_width_controller/commands',
@@ -51,9 +51,7 @@ class GuiROSNode(Node):
 
         self.velocity_publisher = self.create_publisher(Float64, '/velocity_scale', 10)
 
-        # Use this for RealSense
         self.camera_topic = '/camera/camera/color/image_raw'
-
         # For WSL burger test, change to:
         # self.camera_topic = '/image'
 
@@ -90,11 +88,21 @@ class GuiROSNode(Node):
 
     def publish_goal(self, pose: Pose):
         self.goal_publisher.publish(pose)
-        self.get_logger().info("Published pick goal pose")
+        self.get_logger().info("Published pick goal pose to /ur3_goal_pose")
 
     def publish_place_goal(self, pose: Pose):
-        self.place_goal_publisher.publish(pose)
-        self.get_logger().info("Published place goal pose")
+        msg = PoseStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'world'
+        msg.pose = pose
+        self.plan_goal_publisher.publish(msg)
+        self.get_logger().info("Published place goal pose to /plan_goal_pose")
+
+    def publish_pick_and_place_trigger(self):
+        msg = Bool()
+        msg.data = True
+        self.trigger_publisher.publish(msg)
+        self.get_logger().info("Published trigger to /trigger_pick_and_place")
 
     def publish_command(self, command_text: str):
         msg = String()
@@ -126,12 +134,23 @@ class GuiROSNode(Node):
     def detection_callback(self, msg: String):
         try:
             parsed_data = json.loads(msg.data)
+
+            # Supported /detection_result formats:
+            # 1. [{"tag_x_m": ..., "tag_y_m": ..., "tag_z_m": ...}]
+            # 2. {"objects": [{"position": {"x": ..., "y": ..., "z": ...}}]}
+            # 3. {"position": {"x": ..., "y": ..., "z": ...}}
             if isinstance(parsed_data, list):
-                self.latest_detection_result = parsed_data
-                self.latest_detection_error = ""
+                detections = parsed_data
+            elif isinstance(parsed_data, dict) and isinstance(parsed_data.get("objects"), list):
+                detections = parsed_data["objects"]
+            elif isinstance(parsed_data, dict):
+                detections = [parsed_data]
             else:
-                self.latest_detection_result = []
-                self.latest_detection_error = "Detection result is not a list."
+                detections = []
+
+            self.latest_detection_result = detections
+            self.latest_detection_error = ""
+
         except Exception as error:
             self.latest_detection_result = []
             self.latest_detection_error = str(error)
@@ -161,7 +180,6 @@ class RobotGUI(QMainWindow):
                 font-family: Arial;
                 font-size: 12px;
             }
-
             QGroupBox {
                 background-color: white;
                 border: 1px solid #d9dee3;
@@ -170,20 +188,17 @@ class RobotGUI(QMainWindow):
                 font-weight: bold;
                 padding-top: 12px;
             }
-
             QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 12px;
                 padding: 0 4px 0 4px;
                 color: #1f2d3d;
             }
-
             QLabel#StateLabel {
                 font-size: 16px;
                 font-weight: bold;
                 color: #1f2d3d;
             }
-
             QLabel#StateValue {
                 font-size: 16px;
                 font-weight: bold;
@@ -192,13 +207,11 @@ class RobotGUI(QMainWindow):
                 background-color: #e9ecef;
                 color: #212529;
             }
-
             QLabel#InfoLabel {
                 font-size: 12px;
                 color: #344054;
                 padding: 2px 0;
             }
-
             QPushButton {
                 border: none;
                 border-radius: 8px;
@@ -209,23 +222,18 @@ class RobotGUI(QMainWindow):
                 background-color: #344054;
                 color: white;
             }
-
             QPushButton:hover {
                 background-color: #1f2937;
             }
-
             QPushButton#StartButton {
                 background-color: #2e7d32;
             }
-
             QPushButton#StopButton {
                 background-color: #c62828;
             }
-
             QPushButton#ResetButton {
                 background-color: #1565c0;
             }
-
             QTextEdit {
                 background-color: #fcfcfd;
                 border: 1px solid #d0d5dd;
@@ -233,18 +241,15 @@ class RobotGUI(QMainWindow):
                 padding: 8px;
                 color: #1f2937;
             }
-
             QFrame#CameraFrame {
                 background-color: #e8edf2;
                 border: 2px dashed #98a2b3;
                 border-radius: 10px;
             }
-
             QLabel#CameraPlaceholder {
                 color: #667085;
                 font-size: 14px;
             }
-
             QDoubleSpinBox, QComboBox {
                 background-color: #ffffff;
                 border: 1px solid #d0d5dd;
@@ -334,7 +339,7 @@ class RobotGUI(QMainWindow):
         group = QGroupBox("System Controls")
         layout = QVBoxLayout()
 
-        instruction = QLabel("Start sends pick/place goals and publishes /gui_command = start.")
+        instruction = QLabel("Start publishes /trigger_pick_and_place and sends the place pose to /plan_goal_pose.")
         instruction.setWordWrap(True)
         instruction.setObjectName("InfoLabel")
 
@@ -394,24 +399,23 @@ class RobotGUI(QMainWindow):
 
         layout.addWidget(QLabel("qw:"), 2, 0)
         layout.addWidget(self.qw_input, 2, 1)
-
         layout.addWidget(self.send_pose_button, 3, 0, 1, 6)
 
         group.setLayout(layout)
         return group
 
     def build_place_goal_group(self):
-        group = QGroupBox("Object Placement Position")
+        group = QGroupBox("Place Pose for /plan_goal_pose")
         layout = QGridLayout()
 
-        self.place_x_input = self.make_spinbox(-1.0, 1.0, -0.100)
-        self.place_y_input = self.make_spinbox(-1.0, 1.0, 0.250)
-        self.place_z_input = self.make_spinbox(0.0, 1.5, 0.010)
+        self.place_x_input = self.make_spinbox(-1.0, 1.0, 0.300)
+        self.place_y_input = self.make_spinbox(-1.0, 1.0, 0.200)
+        self.place_z_input = self.make_spinbox(0.0, 1.5, 0.150)
 
         self.place_qx_input = self.make_spinbox(-1.0, 1.0, 0.000, 0.001)
-        self.place_qy_input = self.make_spinbox(-1.0, 1.0, 0.707, 0.001)
+        self.place_qy_input = self.make_spinbox(-1.0, 1.0, 0.000, 0.001)
         self.place_qz_input = self.make_spinbox(-1.0, 1.0, 0.000, 0.001)
-        self.place_qw_input = self.make_spinbox(-1.0, 1.0, 0.707, 0.001)
+        self.place_qw_input = self.make_spinbox(-1.0, 1.0, 1.000, 0.001)
 
         self.send_place_button = QPushButton("Send Place Pose")
         self.send_place_button.clicked.connect(self.send_place_goal_only)
@@ -432,7 +436,6 @@ class RobotGUI(QMainWindow):
 
         layout.addWidget(QLabel("qw:"), 2, 0)
         layout.addWidget(self.place_qw_input, 2, 1)
-
         layout.addWidget(self.send_place_button, 3, 0, 1, 6)
 
         group.setLayout(layout)
@@ -580,8 +583,9 @@ class RobotGUI(QMainWindow):
         group.setLayout(layout)
 
         self.append_log("GUI initialised successfully.")
-        self.append_log("Subscribed to camera and detection topics.")
-        self.append_log("Gripper publishes to /finger_width_controller/commands.")
+        self.append_log("Subscribed to camera, detection and motion status topics.")
+        self.append_log("Place pose publishes to /plan_goal_pose.")
+        self.append_log("Start button publishes to /trigger_pick_and_place.")
 
         return group
 
@@ -636,7 +640,7 @@ class RobotGUI(QMainWindow):
         self.use_detection_button = QPushButton("Use Selected Detection as Pick Pose")
         self.use_detection_button.clicked.connect(self.use_selected_detection_as_pick_pose)
 
-        self.detection_note_label = QLabel("Uses tag_x_m, tag_y_m, tag_z_m from /detection_result.")
+        self.detection_note_label = QLabel("Supports object position format and tag_x_m/tag_y_m/tag_z_m format.")
         self.detection_note_label.setObjectName("InfoLabel")
         self.detection_note_label.setWordWrap(True)
 
@@ -658,9 +662,9 @@ class RobotGUI(QMainWindow):
         self.last_command_label = QLabel("Last Command: None")
 
         self.integration_label = QLabel(
-            "Topics: /ur3_goal_pose, /place_goal_pose, "
-            "/finger_width_controller/commands, /velocity_scale, "
-            "/gui_command, /motion_status, /detection_result, camera image topic"
+            "Topics: /detection_result, /ur3_goal_pose, /plan_goal_pose, "
+            "/trigger_pick_and_place, /finger_width_controller/commands, "
+            "/velocity_scale, /gui_command, /motion_status, camera image topic"
         )
         self.integration_label.setWordWrap(True)
 
@@ -760,6 +764,23 @@ class RobotGUI(QMainWindow):
 
         return self.normalize_pose_quaternion(pose)
 
+    def extract_detection_position(self, detection):
+        if not isinstance(detection, dict):
+            return None
+
+        if isinstance(detection.get("position"), dict):
+            position = detection["position"]
+            if all(k in position for k in ["x", "y", "z"]):
+                return float(position["x"]), float(position["y"]), float(position["z"])
+
+        if all(k in detection for k in ["tag_x_m", "tag_y_m", "tag_z_m"]):
+            return float(detection["tag_x_m"]), float(detection["tag_y_m"]), float(detection["tag_z_m"])
+
+        if all(k in detection for k in ["x", "y", "z"]):
+            return float(detection["x"]), float(detection["y"]), float(detection["z"])
+
+        return None
+
     def send_pick_goal_only(self):
         pose = self.create_pick_pose_from_inputs()
 
@@ -770,7 +791,8 @@ class RobotGUI(QMainWindow):
         self.ros_node.publish_goal(pose)
         self.last_command_label.setText("Last Command: Pick pose sent")
         self.append_log(
-            f"Pick pose sent: x={pose.position.x:.3f}, y={pose.position.y:.3f}, z={pose.position.z:.3f}"
+            f"Pick pose sent to /ur3_goal_pose: x={pose.position.x:.3f}, "
+            f"y={pose.position.y:.3f}, z={pose.position.z:.3f}"
         )
 
     def send_place_goal_only(self):
@@ -783,28 +805,24 @@ class RobotGUI(QMainWindow):
         self.ros_node.publish_place_goal(pose)
         self.last_command_label.setText("Last Command: Place pose sent")
         self.append_log(
-            f"Place pose sent: x={pose.position.x:.3f}, y={pose.position.y:.3f}, z={pose.position.z:.3f}"
+            f"Place pose sent to /plan_goal_pose: x={pose.position.x:.3f}, "
+            f"y={pose.position.y:.3f}, z={pose.position.z:.3f}"
         )
 
     def start_system_with_goal(self):
-        pick_pose = self.create_pick_pose_from_inputs()
         place_pose = self.create_place_pose_from_inputs()
-
-        if not self.is_pose_within_workspace(pick_pose.position.x, pick_pose.position.y, pick_pose.position.z):
-            self.append_log("Start rejected: pick pose outside workspace limits.")
-            return
 
         if not self.is_pose_within_workspace(place_pose.position.x, place_pose.position.y, place_pose.position.z):
             self.append_log("Start rejected: place pose outside workspace limits.")
             return
 
-        self.ros_node.publish_goal(pick_pose)
         self.ros_node.publish_place_goal(place_pose)
+        self.ros_node.publish_pick_and_place_trigger()
         self.ros_node.publish_command("start")
 
-        self.last_command_label.setText("Last Command: Start with pick/place goals")
-        self.append_log("Start pressed. Pick and place goals sent.")
-        self.update_state_display("Executing", "Pick and place goals sent.")
+        self.last_command_label.setText("Last Command: Pick-and-place triggered")
+        self.append_log("Start pressed. Published /plan_goal_pose and /trigger_pick_and_place.")
+        self.update_state_display("Executing", "Pick-and-place trigger sent.")
 
     def update_gripper_label(self):
         width = self.gripper_slider.value() / 1000.0
@@ -898,9 +916,10 @@ class RobotGUI(QMainWindow):
         self.detection_selector.clear()
 
         for i, detection in enumerate(detections):
-            colour = detection.get("colour", "Unknown")
-            shape = detection.get("shape", "Unknown")
-            self.detection_selector.addItem(f"{i + 1}: {colour} {shape}")
+            colour = detection.get("colour", detection.get("color", "Object")) if isinstance(detection, dict) else "Object"
+            shape = detection.get("shape", "") if isinstance(detection, dict) else ""
+            label = f"{i + 1}: {colour} {shape}".strip()
+            self.detection_selector.addItem(label)
 
         self.detection_selector.blockSignals(False)
 
@@ -934,25 +953,31 @@ class RobotGUI(QMainWindow):
             self.selected_detection_label.setText("Selected Detection:\nNo object detected yet.")
             return
 
-        colour = detection.get("colour", "Unknown")
-        shape = detection.get("shape", "Unknown")
-        centroid_x = detection.get("centroid_x", "N/A")
-        centroid_y = detection.get("centroid_y", "N/A")
-        depth_m = detection.get("depth_m", None)
+        position = self.extract_detection_position(detection)
 
-        tag_x = detection.get("tag_x_m", None)
-        tag_y = detection.get("tag_y_m", None)
-        tag_z = detection.get("tag_z_m", None)
+        if isinstance(detection, dict):
+            colour = detection.get("colour", detection.get("color", "Unknown"))
+            shape = detection.get("shape", "Unknown")
+            centroid_x = detection.get("centroid_x", "N/A")
+            centroid_y = detection.get("centroid_y", "N/A")
+            depth_m = detection.get("depth_m", None)
+        else:
+            colour = "Unknown"
+            shape = "Unknown"
+            centroid_x = "N/A"
+            centroid_y = "N/A"
+            depth_m = None
 
         text = f"Selected Detection:\nColour: {colour}\nShape: {shape}\nPixel: ({centroid_x}, {centroid_y})"
 
         if depth_m is not None:
-            text += f"\nDepth: {depth_m:.3f} m"
+            text += f"\nDepth: {float(depth_m):.3f} m"
 
-        if tag_x is not None and tag_y is not None and tag_z is not None:
-            text += f"\nAprilTag frame: x={tag_x:.3f}, y={tag_y:.3f}, z={tag_z:.3f} m"
+        if position is not None:
+            x, y, z = position
+            text += f"\nPickup position: x={x:.3f}, y={y:.3f}, z={z:.3f} m"
         else:
-            text += "\nAprilTag frame: not available yet"
+            text += "\nPickup position: not available"
 
         self.selected_detection_label.setText(text)
 
@@ -963,25 +988,20 @@ class RobotGUI(QMainWindow):
             self.append_log("No detection available.")
             return
 
-        tag_x = detection.get("tag_x_m", None)
-        tag_y = detection.get("tag_y_m", None)
-        tag_z = detection.get("tag_z_m", None)
+        position = self.extract_detection_position(detection)
 
-        if tag_x is None or tag_y is None or tag_z is None:
-            self.append_log("Detection missing tag-frame coordinates.")
-            self.update_state_display("Idle", "Detection missing AprilTag-frame coordinates.")
+        if position is None:
+            self.append_log("Detection missing usable position data.")
+            self.update_state_display("Idle", "Detection missing usable pickup coordinates.")
             return
 
-        self.goal_x_input.setValue(float(tag_x))
-        self.goal_y_input.setValue(float(tag_y))
-        self.goal_z_input.setValue(float(tag_z))
+        x, y, z = position
 
-        colour = detection.get("colour", "Unknown")
-        shape = detection.get("shape", "Unknown")
+        self.goal_x_input.setValue(float(x))
+        self.goal_y_input.setValue(float(y))
+        self.goal_z_input.setValue(float(z))
 
-        self.append_log(
-            f"Copied detection to pick pose: {colour} {shape}, x={tag_x:.3f}, y={tag_y:.3f}, z={tag_z:.3f}"
-        )
+        self.append_log(f"Copied detection to pick pose: x={x:.3f}, y={y:.3f}, z={z:.3f}")
         self.last_command_label.setText("Last Command: Detection copied to pick pose")
 
     def refresh_motion_status(self):
