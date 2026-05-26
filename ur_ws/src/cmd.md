@@ -61,6 +61,11 @@ ros2 topic pub --once /plan_goal_pose geometry_msgs/msg/PoseStamped \
 
 ros2 service call /trigger_pick_and_place std_srvs/srv/Trigger '{}'
 
+# Gui
+colcon build --packages-select gui_control --symlink-install
+source install/setup.bash
+ros2 run gui_control gui_node
+
 # install 
 sudo apt install nlohmann-json3-dev
 

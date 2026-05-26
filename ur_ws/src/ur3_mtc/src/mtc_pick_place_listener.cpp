@@ -95,6 +95,9 @@ private:
     std::vector<Obstacle> obstacles_;
     std::mutex obstacles_mutex_;
 
+    void publish_status(const std::string &status);
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_publisher_;
+
     double pick_x_, pick_y_, pick_z_;
     double place_x_, place_y_, place_z_;
     double place_qx_, place_qy_, place_qz_, place_qw_;
@@ -136,7 +139,10 @@ MTCPickPlaceListener::MTCPickPlaceListener(const rclcpp::NodeOptions &options)
     controller_switch_cli_ = this->create_client<controller_manager_msgs::srv::SwitchController>(
         "/controller_manager/switch_controller");
     RCLCPP_INFO(this->get_logger(), "Controller swtich client created on /controller_manager/switch_controller");
-
+    
+    status_publisher_ = this->create_publisher<std_msgs::msg::String>("/motion_status", 10);
+    RCLCPP_INFO(this->get_logger(), "Status publisher created on /motion_status");
+    publish_status("idle");
 }
 
 MTCPickPlaceListener::~MTCPickPlaceListener()
@@ -165,6 +171,7 @@ void MTCPickPlaceListener::eStopCallback(const std_msgs::msg::Empty::SharedPtr /
             controller_switch_cli_->async_send_request(req);
         }
     }
+    publish_status("emergency_stop");
 }
 
 void MTCPickPlaceListener::detectionCallback(const std_msgs::msg::String::SharedPtr msg)
@@ -224,6 +231,7 @@ void MTCPickPlaceListener::triggerCallback(
     {
         res->success = false;
         res->message = "Already executing pick-and-place. Try later.";
+        RCLCPP_WARN(this->get_logger(), "Trigger called but already busy with another pick-and-place.");
         return;
     }
 
@@ -271,10 +279,10 @@ void MTCPickPlaceListener::triggerCallback(
         planner_thread_.join();
     }
     // Launch new thread and store it (not detached)
-    planner_thread_ = std::thread([this]()
-                                  {
+    planner_thread_ = std::thread([this](){
         runPickAndPlace();
-        is_busy_ = false; });
+        is_busy_ = false; 
+    });
 
     res->success = true;
     res->message = "Starting pick-and-place asynchronously.";
@@ -288,6 +296,7 @@ bool MTCPickPlaceListener::activateController(const std::string& controller_name
         return false;
     }
 
+    publish_status("activating_controller");
     auto req = std::make_shared<controller_manager_msgs::srv::SwitchController::Request>();
     req->activate_controllers = {controller_name};
     auto future = controller_switch_cli_->async_send_request(req);
@@ -377,6 +386,7 @@ void MTCPickPlaceListener::addObjectToScene(double x, double y, double z)
 void MTCPickPlaceListener::returnHome()
 {
     RCLCPP_INFO(this->get_logger(), "Moving to safe home pose...");
+    publish_status("returning_home");
     auto move_group = std::make_shared<moveit::planning_interface::MoveGroupInterface>(
         shared_from_this(), "ur_manipulator");
     rclcpp::sleep_for(std::chrono::milliseconds(500));
@@ -406,20 +416,24 @@ void MTCPickPlaceListener::runPickAndPlace()
 {
     if (emergency_stop_) {
         RCLCPP_ERROR(this->get_logger(), "Emergency stop active. Cannot start pick-and-place. Restart the node to continue");
+        publish_status("emergency_stop");
         return;
     }
     if (!activateController("scaled_joint_trajectory_controller")) {
         RCLCPP_ERROR(this->get_logger(), "Cannot proceed without active UR3 trajectory controller");
+        publish_status("failed");
         return;
     }
     if (!activateController("finger_width_trajectory_controller")) {
         RCLCPP_ERROR(this->get_logger(), "Cannot proceed without active gripper controller");
+        publish_status("failed");
         return;
     }
 
     for (int attempt = 1; attempt <= max_attempts_; ++attempt)
     {
         RCLCPP_INFO(this->get_logger(), "Pick-and-place attempt %d/%d", attempt, max_attempts_);
+        publish_status("planning");
         addObjectToScene(pick_x_, pick_y_, pick_z_);
 
         mtc::Task task = createTask();
@@ -431,6 +445,7 @@ void MTCPickPlaceListener::runPickAndPlace()
         {
             RCLCPP_ERROR_STREAM(this->get_logger(),
                                 "Caught InitStageException during task initialization: " << e.what());
+            publish_status("failed");
             if (attempt < max_attempts_)
             {
                 RCLCPP_INFO(this->get_logger(), "Retrying pick-and-place after initialization failure...");
@@ -448,6 +463,7 @@ void MTCPickPlaceListener::runPickAndPlace()
         if (!task.plan(5))
         {
             RCLCPP_ERROR(this->get_logger(), "Task planning failed on attempt %d", attempt);
+            publish_status("failed");
             if (attempt < max_attempts_)
             {
                 RCLCPP_INFO(this->get_logger(), "Retrying pick-and-place after planning failure...");
@@ -462,6 +478,7 @@ void MTCPickPlaceListener::runPickAndPlace()
         }
 
         task.introspection().publishSolution(*task.solutions().front());
+        publish_status("executing");
         try
         {
             auto result = task.execute(*task.solutions().front());
@@ -469,6 +486,7 @@ void MTCPickPlaceListener::runPickAndPlace()
             {
                 RCLCPP_ERROR_STREAM(this->get_logger(),
                                     "Task execution failed on attempt " << attempt << " with error code: " << result.val);
+                publish_status("failed");
                 if (attempt < max_attempts_)
                 {
                     RCLCPP_INFO(this->get_logger(), "Retrying pick-and-place after execution failure...");
@@ -484,6 +502,7 @@ void MTCPickPlaceListener::runPickAndPlace()
             else
             {
                 RCLCPP_INFO(this->get_logger(), "Pick-and-place executed successfully on attempt %d", attempt);
+                publish_status("completed");
                 break; // exit loop on success
             }
         }
@@ -491,6 +510,7 @@ void MTCPickPlaceListener::runPickAndPlace()
         {
             RCLCPP_ERROR_STREAM(this->get_logger(),
                                 "Caught exception during task execution: " << e.what());
+            publish_status("failed");
             if (attempt < max_attempts_)
             {
                 RCLCPP_INFO(this->get_logger(), "Retrying pick-and-place after execution exception...");
@@ -505,6 +525,7 @@ void MTCPickPlaceListener::runPickAndPlace()
         }
 
         RCLCPP_INFO(this->get_logger(), "Pick and place completed successfully");
+        publish_status("completed");
     }
 }
 
@@ -785,6 +806,14 @@ mtc::Task MTCPickPlaceListener::createTask()
     }
 
     return task;
+}
+
+void MTCPickPlaceListener::publish_status(const std::string &status)
+{
+    std_msgs::msg::String msg;
+    msg.data = status;
+    status_publisher_->publish(msg);
+    RCLCPP_INFO(this->get_logger(), "Published motion status: %s", status.c_str());
 }
 
 int main(int argc, char **argv)
